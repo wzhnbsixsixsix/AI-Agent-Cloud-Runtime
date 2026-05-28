@@ -1,62 +1,64 @@
 # AI Agent Cloud Runtime
 
-一个面向 **AI Infra / Agent Runtime** 的可执行平台，而不是普通 CRUD 项目。
+An executable **AI Infra / Agent Runtime** platform, not a generic CRUD project.
 
-## 项目定位
+## Positioning
 
-> 类 Devin / Manus 的云端 AI Agent 执行平台
+> A cloud execution runtime for AI agents, inspired by Devin / Manus.
 
-用户输入任务（如“分析 GitHub 项目”“改代码”“部署网站”“生成 PPT”）后，系统自动完成：
+After a user submits tasks like “analyze a GitHub repository”, “modify code”, “deploy a website”, or “generate slides”, the system automatically:
 
-1. 创建隔离 sandbox
-2. 选择并编排主 Agent / Sub-Agent
-3. 路由技能（skills）
-4. 检索上下文（RAG + memory）
-5. 云端执行并流式返回结果
+1. Creates an isolated sandbox
+2. Selects and orchestrates main agent and sub-agents
+3. Routes skills
+4. Retrieves context with RAG and memory
+5. Executes in cloud runtime and streams results
 
-## 核心架构
+## Core Architecture
 
 ### 1) Gateway (Go)
 - HTTP API / WebSocket
-- 用户鉴权
-- Agent Session 管理
-- 流式输出
+- Authentication
+- Agent session management
+- Streaming output
 
 ### 2) Runtime Scheduler
-- Agent 与 sandbox 分配
-- 任务生命周期管理
-- worker pool / priority queue
-- retry / timeout kill
+- Agent and sandbox allocation
+- Task lifecycle management
+- Worker pool / priority queue
+- retry / timeout-based termination
 
 ### 3) Sandbox Service
-- 动态创建 Docker
-- workspace 与文件系统隔离
-- 命令执行与权限限制
-- 多语言运行时支持（Python / Node / Go）
+- Dynamic Docker provisioning
+- Workspace and filesystem isolation
+- Command execution with permission limits
+- Multi-language runtime support (Python / Node / Go)
 
 ### 4) Multi-Agent Orchestrator
-- 主 Agent 拆分子任务
-- Sub-Agent 并行协作
-- context compression / memory merge
-- hook 与异步事件驱动
+- Main-agent task decomposition
+- Parallel sub-agent collaboration
+- Context compression (summarize sub-agent outputs) / memory merge (deduplicate and consolidate shared facts)
+- hooks and asynchronous event flow
 
 ### 5) Skill System
-- skill 元数据解析
-- embedding 建索引
+- Skill metadata parsing
+- Embedding indexing
 - skill router + function calling
 
-示例目录：
+Skill file format convention: use **YAML** with `.skill` extension.
 
-```txt
+Example directory:
+
+```plaintext
 skills/
  ├── git.skill
  ├── deploy.skill
  └── summarize.skill
 ```
 
-示例 skill：
+Example skill (YAML):
 
-```txt
+```yaml
 name: deploy
 description: deploy docker app to cloud
 
@@ -66,11 +68,11 @@ steps:
 ```
 
 ### 6) Conversation Rewrite Layer
-- 支持“基于历史消息的补丁式改写”
-- 可定向重写指定 message
-- 重新注入上下文，保证会话一致性
+- Patch-style rewrite based on previous assistant messages
+- Targeted rewrite by message ID
+- Context re-injection for conversation consistency
 
-示例：
+Example:
 
 ```json
 {
@@ -79,11 +81,11 @@ steps:
 }
 ```
 
-### 7) RAG Memory System（分层记忆）
-- 短期记忆：Redis
-- 长期记忆：SQLite + embedding
-- 压缩记忆：summary memory
-- workspace scoped memory
+### 7) RAG Memory System (Hierarchical Memory)
+- Short-term memory: Redis
+- Long-term memory: SQLite (MVP, embedding table + cosine search) / PostgreSQL + pgvector (production)
+- Compressed memory: summary memory
+- Workspace-scoped memory
 
 ### 8) Hook System
 - `BeforeAgentRun`
@@ -91,7 +93,7 @@ steps:
 - `OnMemoryWrite`
 - `OnSandboxCreate`
 
-支持 prompt 注入、上下文改写、审计与日志。
+Supports prompt injection, context rewriting, auditing, and logging.
 
 ### 9) Agent RPC Protocol
 
@@ -100,29 +102,32 @@ steps:
   "type": "tool_call",
   "agent_id": "agent_1",
   "tool": "search",
-  "payload": {}
+  "payload": {
+    "query": "repo architecture",
+    "top_k": 5
+  }
 }
 ```
 
-协议目标：
+Protocol goals:
 - streaming
 - event
 - interrupt / cancel
 - retry
 
-## 里程碑（MVP）
+## Milestones (MVP)
 
 - [ ] Gateway + Session + Streaming
 - [ ] Scheduler + Worker Pool + Retry/Timeout
-- [ ] Sandbox Docker 执行链路
-- [ ] Multi-Agent 编排与上下文压缩
-- [ ] Skill 加载 / 检索 / 路由
-- [ ] 分层记忆（Redis + SQLite + RAG）
-- [ ] Hook 与 Agent RPC 协议
+- [ ] Sandbox Docker execution pipeline
+- [ ] Multi-agent orchestration and context compression
+- [ ] Skill loading / retrieval / routing
+- [ ] Hierarchical memory (Redis + SQLite + RAG)
+- [ ] Hook system and agent RPC protocol
 
-## 简历描述（可直接使用）
+## Resume Highlights (Use after project completion)
 
-- Built a cloud-native multi-agent runtime system in Go supporting sandboxed task execution and dynamic skill orchestration
-- Designed a custom agent communication protocol supporting streaming events, tool calling, hooks, and asynchronous task scheduling
-- Implemented hierarchical memory architecture with Redis + SQLite + RAG-based context retrieval
-- Developed isolated Docker sandbox infrastructure for secure code execution and workspace separation
+- Building a cloud-native multi-agent runtime system in Go supporting sandboxed task execution and dynamic skill orchestration
+- Designing a custom agent communication protocol supporting streaming events, tool calling, hooks, and asynchronous task scheduling
+- Implementing hierarchical memory architecture with Redis + SQLite + RAG-based context retrieval
+- Developing isolated Docker sandbox infrastructure for secure code execution and workspace separation

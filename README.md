@@ -26,7 +26,7 @@ After a user submits tasks like “analyze a GitHub repository”, “modify cod
 - Agent and sandbox allocation
 - Task lifecycle management
 - Worker pool / priority queue
-- retry / timeout-based termination
+- Retry / timeout-based termination
 
 ### 3) Sandbox Service
 - Dynamic Docker provisioning
@@ -37,13 +37,14 @@ After a user submits tasks like “analyze a GitHub repository”, “modify cod
 ### 4) Multi-Agent Orchestrator
 - Main-agent task decomposition
 - Parallel sub-agent collaboration
-- Context compression (summarize sub-agent outputs) / memory merge (deduplicate and consolidate shared facts)
-- hooks and asynchronous event flow
+- Context compression (summarize sub-agent outputs)
+- Memory merge (deduplicate and consolidate shared facts)
+- Hooks and asynchronous event flow
 
 ### 5) Skill System
 - Skill metadata parsing
 - Embedding indexing
-- skill router + function calling
+- Skill router + function calling
 
 Skill file format convention: use **YAML** with `.skill` extension.
 
@@ -60,11 +61,11 @@ Example skill (YAML):
 
 ```yaml
 name: deploy
-description: deploy docker app to cloud
+description: deploy Docker app to cloud
 
 steps:
-- build docker
-- push image
+- Build Docker image
+- Push image
 ```
 
 ### 6) Conversation Rewrite Layer
@@ -127,7 +128,7 @@ Protocol goals:
 
 ## Resume Highlights (Use after project completion)
 
-- Building a cloud-native multi-agent runtime system in Go supporting sandboxed task execution and dynamic skill orchestration
-- Designing a custom agent communication protocol supporting streaming events, tool calling, hooks, and asynchronous task scheduling
-- Implementing hierarchical memory architecture with Redis + SQLite + RAG-based context retrieval
-- Developing isolated Docker sandbox infrastructure for secure code execution and workspace separation
+- Built a cloud-native multi-agent runtime system in Go supporting sandboxed task execution and dynamic skill orchestration
+- Designed a custom agent communication protocol supporting streaming events, tool calling, hooks, and asynchronous task scheduling
+- Implemented hierarchical memory architecture with Redis + SQLite + RAG-based context retrieval
+- Developed isolated Docker sandbox infrastructure for secure code execution and workspace separation

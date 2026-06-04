@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package agentforge.v1;
+
+// AgentService 是 agentctl <-> gateway 的双向流接口。
+// W1 阶段仅有一个 RPC：RunAgent。
+//
+// W2 阶段可在保持消息结构稳定的前提下，增加自研 ACP 协议的并行入口。
+service AgentService {
+  // RunAgent 客户端发送一条 RunRequest 起会话，服务端回流 RunEvent 直至 Done/Error。
+  rpc RunAgent(stream RunRequest) returns (stream RunEvent);
+}
+
+message RunRequest {
+  // 客户端可不填，gateway 会生成 ULID。
+  string run_id = 1;
+  string user_id = 2;
+  string prompt = 3;
+  // 可选，覆盖默认 model。
+  string model = 4;
+  // gateway 生成，贯穿全链路。
+  string trace_id = 5;
+}
+
+message RunEvent {
+  string run_id = 1;
+  string trace_id = 2;
+  oneof payload {
+    StateChanged state_changed = 10;
+    Token        token         = 11;
+    Done         done          = 12;
+    Error        error         = 13;
+  }
+}
+
+enum RunState {
+  RUN_STATE_UNSPECIFIED = 0;
+  RUN_STATE_PENDING = 1;
+  RUN_STATE_RUNNING = 2;
+  RUN_STATE_WAITING_TOOL = 3;
+  RUN_STATE_COMPACTING = 4;
+  RUN_STATE_DONE = 5;
+  RUN_STATE_FAILED = 6;
+}
+
+message StateChanged {
+  RunState from = 1;
+  RunState to = 2;
+  int64 ts_unix_ms = 3;
+}
+
+message Token {
+  string text = 1;
+  int64 index = 2;
+}
+
+message Done {
+  int64 total_tokens = 1;
+  int64 ts_unix_ms = 2;
+}
+
+message Error {
+  string code = 1;
+  string message = 2;
+  bool retriable = 3;
+}

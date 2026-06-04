@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package agentforge.v1;
+
+// SchedulerService 给 worker 用的注册/心跳接口。
+// W1 仅做 worker 注册占位，不参与任务路由（worker 直接 XREADGROUP）。
+// W8 引入 Raft 后，Pick 方法用于 gateway 询问应投递到哪个 worker（或队列分片）。
+service SchedulerService {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+message RegisterRequest {
+  string worker_id = 1;
+  string addr = 2;
+  int32  concurrency = 3;
+  map<string, string> labels = 4;
+}
+
+message RegisterResponse {
+  // server 颁发的会话 token，可用于后续心跳鉴权（W1 留空）。
+  string session = 1;
+  int64  ttl_seconds = 2;
+}
+
+message HeartbeatRequest {
+  string worker_id = 1;
+  int32  in_flight = 2;
+  double load = 3;
+}
+
+message HeartbeatResponse {
+  bool ok = 1;
+}
+
+message HealthRequest {}
+message HealthResponse {
+  string status = 1;
+  int64  ts_unix_ms = 2;
+}

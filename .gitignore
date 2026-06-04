@@ -1,0 +1,30 @@
+# Binaries
+/bin/
+*.exe
+*.test
+*.out
+
+# Env
+.env
+.env.local
+*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+/build/cache/
+/dist/
+
+# Coverage
+coverage.txt
+*.coverprofile
+
+# Proto 生成产物（由 make proto / Dockerfile 生成）
+/pkg/proto/gen/

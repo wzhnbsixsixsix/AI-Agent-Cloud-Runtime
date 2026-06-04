@@ -3,7 +3,7 @@ SHELL := /usr/bin/env bash
 
 MODULE     := github.com/wzhnbsixsixsix/agentforge
 BIN_DIR    := bin
-BINARIES   := gateway scheduler worker agentctl
+BINARIES   := gateway scheduler worker agentctl bench
 GOFLAGS    := -trimpath
 LDFLAGS    := -s -w
 

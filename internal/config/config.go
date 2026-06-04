@@ -22,6 +22,13 @@ type Common struct {
 type Gateway struct {
 	Common
 	GRPCAddr string `env:"GATEWAY_GRPC_ADDR" envDefault:":8080"`
+	// ACPAddr 自研 ACP 协议监听地址，留空则不启动 ACP server。
+	ACPAddr           string        `env:"GATEWAY_ACP_ADDR"            envDefault:":8090"`
+	ACPReadTimeout    time.Duration `env:"GATEWAY_ACP_READ_TIMEOUT"    envDefault:"30s"`
+	ACPMaxConnections int           `env:"GATEWAY_ACP_MAX_CONNECTIONS" envDefault:"4096"`
+	ACPCacheTTL       time.Duration `env:"GATEWAY_ACP_CACHE_TTL"       envDefault:"1h"`
+	// 任务总超时（gRPC 与 ACP 共用）
+	RunTimeout time.Duration `env:"GATEWAY_RUN_TIMEOUT" envDefault:"10m"`
 }
 
 // Scheduler 配置。
@@ -50,7 +57,10 @@ type Worker struct {
 // AgentCtl CLI 配置。
 type AgentCtl struct {
 	Common
-	GatewayDial string `env:"GATEWAY_DIAL_ADDR" envDefault:"localhost:8080"`
+	GatewayDial    string `env:"GATEWAY_DIAL_ADDR"     envDefault:"localhost:8080"`
+	GatewayACPDial string `env:"GATEWAY_ACP_DIAL_ADDR" envDefault:"localhost:8090"`
+	// Proto 默认使用的协议: grpc | acp
+	Proto string `env:"AGENTCTL_PROTO" envDefault:"grpc"`
 }
 
 // LoadGateway 读取 Gateway 配置；缺失必填项 panic。

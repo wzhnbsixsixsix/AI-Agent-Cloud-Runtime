@@ -30,8 +30,12 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DB: ${REDIS_DB:-0}
       GATEWAY_GRPC_ADDR: ":8080"
+      GATEWAY_ACP_ADDR: ":8090"
+      GATEWAY_ACP_CACHE_TTL: ${GATEWAY_ACP_CACHE_TTL:-1h}
+      GATEWAY_RUN_TIMEOUT: ${GATEWAY_RUN_TIMEOUT:-10m}
     ports:
       - "8080:8080"
+      - "8090:8090"
     restart: unless-stopped
 
   scheduler:

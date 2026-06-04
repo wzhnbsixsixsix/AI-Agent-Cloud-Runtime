@@ -3,11 +3,38 @@
 > 项目代号：**AgentForge** — 云原生多智能体运行时。  
 > 详细设计见 [`PROJECT_DESIGN.md`](./PROJECT_DESIGN.md)。
 
-当前进度：**W1 骨架已落地**。可在本地用 Docker Compose 一键启动 `gateway + scheduler + worker + redis`，通过 `agentctl run --prompt "..."` 流式收到 OpenAI 兼容 API 的逐 token 响应。
+当前进度：**W2 完成 — ACP 自研协议落地**。
+
+- W1：可在本地用 Docker Compose 一键启动 `gateway + scheduler + worker + redis`，通过 `agentctl run --prompt "..."` 流式收到 OpenAI 兼容 API 的逐 token 响应。
+- **W2**：gateway 同时监听 `:8080`(gRPC) 与 `:8090`(ACP)。`agentctl --proto acp` 可走自研协议；新增 `agentctl resume --run-id ...` 演示断线续传；`bin/bench` 工具一条命令打两条路径出对比数据。
 
 ---
 
-## 1. W1 架构
+## 1. W2 架构（ACP / gRPC 双入口）
+
+```
+                     ┌────────────────────────────┐
+   agentctl ─grpc──▶ │   gateway                  │── XADD ──▶ Redis Stream ──▶ worker
+            ─acp───▶ │   :8080 grpc / :8090 acp   │                                │
+       (--proto)     │                            │◀── PUBLISH events:{run_id} ────┘
+                     │  ACP session 把每条 EVENT  │
+                     │  同步写入 ZSet acp:events: │
+                     │  {run_id} 用于断线续传     │
+                     └────────────────────────────┘
+```
+
+ACP 协议规范见 [`pkg/acp/spec.md`](./pkg/acp/spec.md)。要点：
+
+- 裸 TCP + 自定义帧（magic+ver+type+flags+seq(8B)+uvarint len+payload）
+- 9 种帧类型：HELLO / HELLO_ACK / RUN / EVENT / PING / PONG / RESUME / CLOSE / ERROR
+- 控制帧用 JSON，业务帧 RUN/EVENT 复用 W1 的 protobuf 定义
+- 断线续传：服务端把每条 EVENT 落 ZSet（score=seq, TTL=1h），客户端 RESUME 带 last_seq 即可
+
+W2 阶段控制面（`gateway↔scheduler`）保持 gRPC，只在外部入口（`client↔gateway`）做协议替换；这样 ACP 的优势 benchmark 才有公平对照。
+
+---
+
+## 2. W1 架构
 
 ```
    agentctl ──gRPC stream──▶ gateway :8080
@@ -150,8 +177,9 @@ make down   # 停服并清理 redis 数据
 
 ---
 
-## 7. 当前 W1 已落地
+## 7. 当前已落地
 
+### W1
 - [x] Protobuf 定义 (`agent.proto` / `scheduler.proto`) + buf 生成
 - [x] gRPC 双向流接入 (`AgentService.RunAgent`)
 - [x] Redis Stream 任务队列 + Consumer Group + DLQ + 重试
@@ -161,13 +189,45 @@ make down   # 停服并清理 redis 数据
 - [x] worker 注册 / 心跳到 scheduler
 - [x] CLI 客户端（cobra）
 - [x] Docker Compose 一键起，distroless 运行时
-- [x] 单测：history / llm / queue 共 ≥ 5 个
 
-## 8. Roadmap（参考 PROJECT_DESIGN.md §7）
+### W2 — ACP 自研协议
+- [x] 协议规范 [`pkg/acp/spec.md`](./pkg/acp/spec.md) + 帧编解码（`pkg/acp`）
+- [x] ACP server / session / event-cache（Redis ZSet）/ client（`internal/acp`）
+- [x] gateway 同时监听 gRPC `:8080` 与 ACP `:8090`，gRPC 注册 `health.v1`
+- [x] 断线续传：服务端缓存事件，客户端 `RESUME{last_seq}` 回放
+- [x] `agentctl --proto acp|grpc` 切换 + `agentctl resume --run-id ... --last-seq ...`
+- [x] `bin/bench rtt | throughput | connect` 一条命令打两条路径出对比数据
+- [x] 单测：codec 5 例 + ACP server happy/ping/resume 3 例
+
+## 8. W2 demo 命令
+
+```bash
+# 起服（gateway 会同时暴露 :8080 与 :8090）
+make up
+
+# 1) 跑一次 ACP 链路
+./bin/agentctl run --proto acp --prompt "用一句话介绍你自己"
+
+# 2) 同时 benchmark ACP vs gRPC（小消息 RTT）
+./bin/bench rtt --grpc localhost:8080 --acp localhost:8090 -n 5000
+
+# 3) 吞吐对比
+./bin/bench throughput --grpc localhost:8080 --acp localhost:8090 -n 50000 -c 64
+
+# 4) 建连耗时对比
+./bin/bench connect --grpc localhost:8080 --acp localhost:8090 -n 1000 -c 50
+
+# 5) 断线续传演示：先跑一次记下 run_id，再用 resume 拉取缓存
+./bin/agentctl run --proto acp --prompt "讲个长故事..."     # 输出有 run_id=01HX...
+./bin/agentctl resume --run-id 01HX... --last-seq 0
+```
+
+预期：RTT / Throughput 两个场景下 ACP 比 gRPC 快 ~3x（ACP 走单连接裸 TCP，无 HTTP/2 帧、HEADERS 压缩与流量调度开销）。
+
+## 9. Roadmap（参考 PROJECT_DESIGN.md §7）
 
 | 周 | 主题 |
 |---|---|
-| W2 | ACP 自研协议（帧编解码 + 双向流 + 断线续传 + benchmark） |
 | W3 | Sandbox L1（Docker driver + 预热池 + 内置 tool） |
 | W4 | LLM + 可变历史进阶（Fold / 子 Agent 折叠） |
 | W5 | Skill 索引 + Selector |

@@ -21,9 +21,10 @@ import (
 //   订阅 events:{run_id} -> 把事件转换成 RunEvent 流回客户端 -> 看到 DONE/ERROR 关流。
 type agentService struct {
 	pb.UnimplementedAgentServiceServer
-	q   *queue.StreamQueue
-	ps  *queue.PubSub
-	log *slog.Logger
+	q          *queue.StreamQueue
+	ps         *queue.PubSub
+	log        *slog.Logger
+	runTimeout time.Duration
 }
 
 func (s *agentService) RunAgent(stream pb.AgentService_RunAgentServer) error {
@@ -72,7 +73,11 @@ func (s *agentService) RunAgent(stream pb.AgentService_RunAgentServer) error {
 	log.Info("task dispatched", "user", first.GetUserId())
 
 	// 总超时（防止任务卡死，gateway 永远挂）
-	hard, hardCancel := context.WithTimeout(ctx, 10*time.Minute)
+	timeout := s.runTimeout
+	if timeout <= 0 {
+		timeout = 10 * time.Minute
+	}
+	hard, hardCancel := context.WithTimeout(ctx, timeout)
 	defer hardCancel()
 
 	for {

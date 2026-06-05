@@ -29,6 +29,8 @@ type Gateway struct {
 	ACPCacheTTL       time.Duration `env:"GATEWAY_ACP_CACHE_TTL"       envDefault:"1h"`
 	// 任务总超时（gRPC 与 ACP 共用）
 	RunTimeout time.Duration `env:"GATEWAY_RUN_TIMEOUT" envDefault:"10m"`
+	// W3: tool 调用单次最大等待（gateway 侧；worker 侧另有 hardLimit）。
+	ToolCallTimeout time.Duration `env:"GATEWAY_TOOL_CALL_TIMEOUT" envDefault:"60s"`
 }
 
 // Scheduler 配置。
@@ -52,6 +54,23 @@ type Worker struct {
 	OpenAIAPIKey    string        `env:"OPENAI_API_KEY"`
 	OpenAIModel     string        `env:"OPENAI_MODEL"            envDefault:"gpt-4o-mini"`
 	OpenAITimeout   time.Duration `env:"OPENAI_TIMEOUT_SECONDS"  envDefault:"60s"`
+
+	// ---- W3: Sandbox + Tool ----
+	// SandboxDriver: docker | memory | disabled。disabled 表示不启动 tool consumer。
+	SandboxDriver        string        `env:"SANDBOX_DRIVER"          envDefault:"docker"`
+	SandboxImage         string        `env:"SANDBOX_IMAGE"           envDefault:"alpine:3.19"`
+	SandboxPoolSize      int           `env:"SANDBOX_POOL_SIZE"       envDefault:"4"`
+	SandboxWorkspaceRoot string        `env:"SANDBOX_WORKSPACE_ROOT"  envDefault:"/tmp/agentforge"`
+	SandboxMemoryMB      int64         `env:"SANDBOX_MEMORY_MB"       envDefault:"256"`
+	SandboxCPUQuotaUS    int64         `env:"SANDBOX_CPU_QUOTA_US"    envDefault:"50000"`
+	SandboxPidsLimit     int64         `env:"SANDBOX_PIDS_LIMIT"      envDefault:"256"`
+	SandboxExecHard      time.Duration `env:"SANDBOX_EXEC_HARD"       envDefault:"60s"`
+	SandboxAcquireTimeout time.Duration `env:"SANDBOX_ACQUIRE_TIMEOUT" envDefault:"30s"`
+
+	ToolConsumerGroup string   `env:"TOOL_CONSUMER_GROUP"  envDefault:"tool-runtime"`
+	ToolConcurrency   int      `env:"TOOL_CONCURRENCY"     envDefault:"4"`
+	ToolHTTPMaxBytes  int64    `env:"TOOL_HTTP_MAX_BYTES"  envDefault:"1048576"`
+	ToolHTTPAllowList []string `env:"TOOL_HTTP_ALLOW_LIST" envSeparator:","`
 }
 
 // AgentCtl CLI 配置。

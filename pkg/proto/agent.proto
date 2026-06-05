@@ -3,12 +3,20 @@ syntax = "proto3";
 package agentforge.v1;
 
 // AgentService 是 agentctl <-> gateway 的双向流接口。
-// W1 阶段仅有一个 RPC：RunAgent。
-//
-// W2 阶段可在保持消息结构稳定的前提下，增加自研 ACP 协议的并行入口。
+//   W1: RunAgent
+//   W2: 保持消息结构稳定的前提下，增加自研 ACP 协议并行入口
+//   W3: 新增 ExecTool / ListTools 用于在不经过 LLM 的情况下直接调用 sandbox tool；
+//       function-calling 闭环留给 W4。
 service AgentService {
   // RunAgent 客户端发送一条 RunRequest 起会话，服务端回流 RunEvent 直至 Done/Error。
   rpc RunAgent(stream RunRequest) returns (stream RunEvent);
+
+  // ExecTool 直接在 worker 侧的 sandbox 里执行一个 tool，不经过 LLM。
+  // 主要用途：调试 / W3 demo；W4 之后会复用同一套 ToolDescriptor 接进 LLM function-calling。
+  rpc ExecTool(ExecToolRequest) returns (ExecToolResponse);
+
+  // ListTools 返回 worker 侧已注册的全部 tool 描述（含 JSON Schema）。
+  rpc ListTools(ListToolsRequest) returns (ListToolsResponse);
 }
 
 message RunRequest {
@@ -63,4 +71,51 @@ message Error {
   string code = 1;
   string message = 2;
   bool retriable = 3;
+}
+
+// ---------- W3: Tool 调用 ----------
+
+message ExecToolRequest {
+  string user_id = 1;
+  // tool 名字（必须是 ListTools 返回过的）。
+  string tool = 2;
+  // tool 参数，按对应 ToolDescriptor.parameters_json 的 JSON Schema。
+  bytes args_json = 3;
+  // 客户端期望的最大执行时长；0 用 server 默认（30s）。
+  uint32 timeout_ms = 4;
+  // 可选；server 会生成。
+  string trace_id = 5;
+}
+
+message ExecToolResponse {
+  // server 生成；可用于日志关联。
+  string call_id = 1;
+  // 实际执行该 tool 的容器 id（fs/bash 类）；http_fetch 等 host 工具为空。
+  string container_id = 2;
+  // sandbox 命令退出码；非沙箱类工具默认 0。
+  int32 exit_code = 3;
+  // tool 返回内容（文本）。bash 会把 stdout+stderr 合并；fs_read 是文件内容；http_fetch 是 body。
+  string content = 4;
+  // 业务失败标记（命令非 0 退出、HTTP 4xx/5xx、参数错等）。
+  bool is_error = 5;
+  // tool.Result.Metadata 序列化后的 JSON。
+  bytes metadata_json = 6;
+  // 总耗时（ms）。
+  uint64 elapsed_ms = 7;
+  // 内部异常时填，业务失败用 is_error 不填这里。
+  string error_code = 8;
+  string error_message = 9;
+}
+
+message ListToolsRequest {}
+
+message ListToolsResponse {
+  repeated ToolDescriptor tools = 1;
+}
+
+message ToolDescriptor {
+  string name = 1;
+  string description = 2;
+  // OpenAI/Anthropic function-calling 兼容的 JSON Schema（Draft 7）字符串。
+  string parameters_json = 3;
 }

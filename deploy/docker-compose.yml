@@ -33,6 +33,7 @@ services:
       GATEWAY_ACP_ADDR: ":8090"
       GATEWAY_ACP_CACHE_TTL: ${GATEWAY_ACP_CACHE_TTL:-1h}
       GATEWAY_RUN_TIMEOUT: ${GATEWAY_RUN_TIMEOUT:-10m}
+      GATEWAY_TOOL_CALL_TIMEOUT: ${GATEWAY_TOOL_CALL_TIMEOUT:-60s}
     ports:
       - "8080:8080"
       - "8090:8090"
@@ -88,6 +89,28 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       OPENAI_TIMEOUT_SECONDS: ${OPENAI_TIMEOUT_SECONDS:-60s}
+      # ---- W3: Sandbox + Tool ----
+      # docker driver 需要把宿主 docker.sock 挂进 worker 容器，并在 worker 容器与
+      # daemon 之间共享 SANDBOX_WORKSPACE_ROOT 目录路径，否则 daemon 拿不到 bind 源。
+      SANDBOX_DRIVER: ${SANDBOX_DRIVER:-docker}
+      SANDBOX_IMAGE: ${SANDBOX_IMAGE:-alpine:3.19}
+      SANDBOX_POOL_SIZE: ${SANDBOX_POOL_SIZE:-4}
+      SANDBOX_WORKSPACE_ROOT: ${SANDBOX_WORKSPACE_ROOT:-/tmp/agentforge}
+      SANDBOX_MEMORY_MB: ${SANDBOX_MEMORY_MB:-256}
+      SANDBOX_CPU_QUOTA_US: ${SANDBOX_CPU_QUOTA_US:-50000}
+      SANDBOX_PIDS_LIMIT: ${SANDBOX_PIDS_LIMIT:-256}
+      SANDBOX_EXEC_HARD: ${SANDBOX_EXEC_HARD:-60s}
+      SANDBOX_ACQUIRE_TIMEOUT: ${SANDBOX_ACQUIRE_TIMEOUT:-30s}
+      TOOL_CONSUMER_GROUP: ${TOOL_CONSUMER_GROUP:-tool-runtime}
+      TOOL_CONCURRENCY: ${TOOL_CONCURRENCY:-4}
+      TOOL_HTTP_MAX_BYTES: ${TOOL_HTTP_MAX_BYTES:-1048576}
+      TOOL_HTTP_ALLOW_LIST: ${TOOL_HTTP_ALLOW_LIST:-}
+    volumes:
+      # 让 worker 进程能驱动宿主 docker daemon 拉起 sandbox 容器。
+      - /var/run/docker.sock:/var/run/docker.sock
+      # 用 bind mount 共享 workspace 根：worker 在容器内 mkdir 的子目录，
+      # docker daemon 也能按相同宿主路径挂给 sandbox 容器。
+      - ${SANDBOX_WORKSPACE_HOST:-/tmp/agentforge}:${SANDBOX_WORKSPACE_ROOT:-/tmp/agentforge}
     restart: unless-stopped
     deploy:
       replicas: ${WORKER_REPLICAS:-1}

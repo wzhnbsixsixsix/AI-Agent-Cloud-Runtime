@@ -19,12 +19,31 @@ import (
 // agentService 实现 pb.AgentServiceServer：
 //   收到客户端第一条 RunRequest -> 生成 run_id+trace_id -> XADD 到任务队列 ->
 //   订阅 events:{run_id} -> 把事件转换成 RunEvent 流回客户端 -> 看到 DONE/ERROR 关流。
+//
+// W3 起额外承载 ExecTool / ListTools，业务委托给 toolHandler。
 type agentService struct {
 	pb.UnimplementedAgentServiceServer
 	q          *queue.StreamQueue
 	ps         *queue.PubSub
 	log        *slog.Logger
 	runTimeout time.Duration
+	tool       *toolHandler // nil 表示未启用 W3 tool（如 sandbox 不可用）
+}
+
+// ExecTool gRPC 入口；委托给 toolHandler。
+func (s *agentService) ExecTool(ctx context.Context, req *pb.ExecToolRequest) (*pb.ExecToolResponse, error) {
+	if s.tool == nil {
+		return nil, status.Error(codes.Unavailable, "tool service disabled on this gateway")
+	}
+	return s.tool.execTool(ctx, req)
+}
+
+// ListTools gRPC 入口；即使 tool service 关掉也能返回空列表。
+func (s *agentService) ListTools(ctx context.Context, req *pb.ListToolsRequest) (*pb.ListToolsResponse, error) {
+	if s.tool == nil {
+		return &pb.ListToolsResponse{}, nil
+	}
+	return s.tool.listTools(ctx, req)
 }
 
 func (s *agentService) RunAgent(stream pb.AgentService_RunAgentServer) error {

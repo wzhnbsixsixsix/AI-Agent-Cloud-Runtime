@@ -15,6 +15,7 @@ import (
 	"github.com/wzhnbsixsixsix/agentforge/internal/obs"
 	"github.com/wzhnbsixsixsix/agentforge/internal/queue"
 	redisstore "github.com/wzhnbsixsixsix/agentforge/internal/storage/redis"
+	"github.com/wzhnbsixsixsix/agentforge/internal/tool"
 
 	pb "github.com/wzhnbsixsixsix/agentforge/pkg/proto/gen"
 
@@ -50,9 +51,33 @@ func main() {
 	}
 	pubsub := queue.NewPubSub(rdb)
 
+	// W3: tool stream
+	toolQ := queue.NewToolStream(rdb)
+	if err := toolQ.EnsureGroup(rootCtx, "tool-runtime"); err != nil {
+		logger.Error("ensure tool group", "err", err)
+		os.Exit(1)
+	}
+	toolBus := queue.NewToolBus(rdb)
+	// gateway 只用 registry 拿 descriptor + 校验名字，不真的执行 tool；
+	// HTTP allow-list/max-bytes 在这里无所谓（worker 才是执行端）。
+	toolReg := tool.Builtins(tool.BuiltinsConfig{})
+	tHandler := &toolHandler{
+		q:        toolQ,
+		bus:      toolBus,
+		registry: toolReg,
+		log:      logger.With("comp", "tool"),
+		timeout:  cfg.ToolCallTimeout,
+	}
+
 	// ---- gRPC server ----
 	srv := grpc.NewServer()
-	svc := &agentService{q: streamQ, ps: pubsub, log: logger, runTimeout: cfg.RunTimeout}
+	svc := &agentService{
+		q:          streamQ,
+		ps:         pubsub,
+		log:        logger,
+		runTimeout: cfg.RunTimeout,
+		tool:       tHandler,
+	}
 	pb.RegisterAgentServiceServer(srv, svc)
 	healthSvc := health.NewServer()
 	healthpb.RegisterHealthServer(srv, healthSvc)

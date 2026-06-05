@@ -3,10 +3,11 @@
 > 项目代号：**AgentForge** — 云原生多智能体运行时。  
 > 详细设计见 [`PROJECT_DESIGN.md`](./PROJECT_DESIGN.md)。
 
-当前进度：**W2 完成 — ACP 自研协议落地**。
+当前进度：**W3 完成 — Sandbox L1（Docker driver + 预热池 + 5 个内置 tool）**。
 
 - W1：可在本地用 Docker Compose 一键启动 `gateway + scheduler + worker + redis`，通过 `agentctl run --prompt "..."` 流式收到 OpenAI 兼容 API 的逐 token 响应。
-- **W2**：gateway 同时监听 `:8080`(gRPC) 与 `:8090`(ACP)。`agentctl --proto acp` 可走自研协议；新增 `agentctl resume --run-id ...` 演示断线续传；`bin/bench` 工具一条命令打两条路径出对比数据。
+- W2：gateway 同时监听 `:8080`(gRPC) 与 `:8090`(ACP)。`agentctl --proto acp` 可走自研协议；新增 `agentctl resume --run-id ...` 演示断线续传；`bin/bench` 工具一条命令打两条路径出对比数据。
+- **W3**：worker 内置 Docker sandbox driver + 预热池 + bash/fs_read/fs_write/fs_list/http_fetch 5 个 tool；新增 gRPC `ListTools` / `ExecTool` 两个 RPC；`agentctl tool list` / `agentctl tool exec <name> --args '<json>'` 直接调用，留出 W4 接入 LLM function-calling 的钩子。
 
 ---
 
@@ -199,6 +200,14 @@ make down   # 停服并清理 redis 数据
 - [x] `bin/bench rtt | throughput | connect` 一条命令打两条路径出对比数据
 - [x] 单测：codec 5 例 + ACP server happy/ping/resume 3 例
 
+### W3 — Sandbox L1
+- [x] `internal/sandbox`：`Driver` 接口 + DockerDriver（预热池 N=4 + 异步补位）+ MemoryDriver（降级）
+- [x] 容器隔离：`network=none` + `read-only rootfs` + `cap_drop ALL` + `no-new-privileges` + tmpfs + memory/cpu/pids cgroup + exec 硬超时
+- [x] `internal/tool`：5 个内置 tool（bash / fs_read / fs_write / fs_list / http_fetch），均带 OpenAI/Anthropic 兼容 JSON Schema
+- [x] 独立 Stream `queue:tool_tasks` + Pub/Sub `tool_results:{call_id}` 做请求-响应
+- [x] gRPC 新增 `ListTools` / `ExecTool` RPC + `agentctl tool list` / `agentctl tool exec`
+- [x] 单测：MemoryDriver 4 例 + tool 6 组；docker 集成测试通过 build tag `integration_docker` 隔离
+
 ## 8. W2 demo 命令
 
 ```bash
@@ -224,12 +233,113 @@ make up
 
 预期：RTT / Throughput 两个场景下 ACP 比 gRPC 快 ~3x（ACP 走单连接裸 TCP，无 HTTP/2 帧、HEADERS 压缩与流量调度开销）。
 
-## 9. Roadmap（参考 PROJECT_DESIGN.md §7）
+## 9. W3 demo — Sandbox + Tool
+
+### 架构
+
+```
+   agentctl tool exec ──gRPC──▶ gateway ──XADD queue:tool_tasks──▶ Redis Stream
+                                  ▲                                     │
+                                  │ Subscribe tool_results:{call_id}    │
+                                  │                                     ▼
+                                  └─PUBLISH─── worker (tool consumer) ──┐
+                                                       │                │
+                                                       ▼                │
+                                       ┌────────────── Sandbox.Driver ──┘
+                                       │ DockerDriver: 预热池 N=4
+                                       │   pop slot ─┬─ bind /tmp/agentforge/<id>/<run_id>
+                                       │             │   → /workspace/runs/<run_id>
+                                       │             ├─ ContainerExec(bash/fs/...)
+                                       │             └─ release: force rm + 异步 spawn 新 slot
+                                       └ MemoryDriver（无 docker 时降级，仅工程联调）
+```
+
+### 隔离矩阵（DockerDriver）
+
+| 项 | 值 |
+|---|---|
+| 镜像 | `alpine:3.19`（启动后 `sleep infinity`） |
+| network | `none`（容器侧无任何 NIC） |
+| rootfs | `read-only` + `/tmp` tmpfs |
+| caps | `cap_drop ALL` + `no-new-privileges` |
+| memory | 默认 256 MiB |
+| cpu | quota 50000 / period 100000（≈ 0.5 core） |
+| pids | 256 |
+| 单次 exec 时长 | 默认 60s |
+| workspace | 宿主 `/tmp/agentforge/<slot>/runs/<run_id>` ⇄ 容器 `/workspace/runs/<run_id>` |
+
+> `http_fetch` 故意不走 sandbox（容器无网络），改在 worker 主进程跑，靠 `TOOL_HTTP_ALLOW_LIST` + `TOOL_HTTP_MAX_BYTES` 兜底。
+
+### 内置 tool
+
+| 名字 | 用途 | 参数（Schema 见 `agentctl tool list --schema`） |
+|------|------|----|
+| `bash` | `sh -c <command>` | `{"command": "..."}` |
+| `fs_read` | 读文件（head -c 截断） | `{"path": "...", "max_bytes": 65536}` |
+| `fs_write` | 创建/覆盖/追加 | `{"path": "...", "content": "...", "append": false}` |
+| `fs_list` | `ls -la` 列目录 | `{"path": "."}` |
+| `http_fetch` | host 上发 HTTP GET | `{"url": "https://example.com/", "max_bytes": 1048576}` |
+
+`fs_*` 全部走 `safePath` 校验，禁止 `../` 越出 workspace。
+
+### demo 命令
+
+```bash
+# 0) 准备：把 sandbox 相关 env 加到 .env（默认值已经够 demo）
+cp .env.example .env
+#    若想试 http_fetch：在 .env 里补 TOOL_HTTP_ALLOW_LIST=httpbin.org
+
+# 1) 起服（首次会拉 alpine:3.19）
+make up
+
+# 2) 列出全部 tool
+./bin/agentctl tool list
+./bin/agentctl tool list --schema     # 含 JSON Schema
+
+# 3) 在 sandbox 里跑 bash
+./bin/agentctl tool exec bash --args '{"command":"id && uname -a && ls -la /workspace"}'
+
+# 4) 写文件 → 读回来
+./bin/agentctl tool exec fs_write \
+  --args '{"path":"hello.txt","content":"hi from sandbox\n"}'
+./bin/agentctl tool exec fs_read --args '{"path":"hello.txt"}'
+
+# 5) 验证网络隔离（应失败：容器内无网络）
+./bin/agentctl tool exec bash --args '{"command":"wget -qO- https://example.com || echo BLOCKED"}'
+
+# 6) 验证 read-only rootfs（应失败）
+./bin/agentctl tool exec bash --args '{"command":"touch /etc/x 2>&1 | head -1"}'
+
+# 7) host 侧 http_fetch（受 TOOL_HTTP_ALLOW_LIST 限制）
+./bin/agentctl tool exec http_fetch \
+  --args '{"url":"https://httpbin.org/get"}'
+```
+
+预期：第 5 / 6 步分别打印 `BLOCKED` 与 `Read-only file system`，证明 sandbox 隔离生效。
+
+### 关键环境变量（W3）
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `SANDBOX_DRIVER` | `docker` | `docker` / `memory` / `disabled` |
+| `SANDBOX_IMAGE` | `alpine:3.19` | sandbox 容器镜像 |
+| `SANDBOX_POOL_SIZE` | `4` | 预热池常驻 idle 容器数 |
+| `SANDBOX_WORKSPACE_ROOT` | `/tmp/agentforge` | worker 容器内的 workspace 根 |
+| `SANDBOX_WORKSPACE_HOST` | `/tmp/agentforge` | 宿主上对应路径（docker driver bind 源） |
+| `SANDBOX_MEMORY_MB` | `256` | 容器内存上限 |
+| `SANDBOX_CPU_QUOTA_US` | `50000` | cgroup CPU quota |
+| `SANDBOX_PIDS_LIMIT` | `256` | pids cgroup 上限 |
+| `SANDBOX_EXEC_HARD` | `60s` | 单次 exec 硬超时 |
+| `TOOL_CONCURRENCY` | `4` | tool consumer 并发 |
+| `TOOL_HTTP_MAX_BYTES` | `1048576` | http_fetch body 截断 |
+| `TOOL_HTTP_ALLOW_LIST` | _空_ | 逗号分隔的 host 白名单；空则禁用 |
+| `GATEWAY_TOOL_CALL_TIMEOUT` | `60s` | gateway 等 worker 结果的超时 |
+
+## 10. Roadmap（参考 PROJECT_DESIGN.md §7）
 
 | 周 | 主题 |
 |---|---|
-| W3 | Sandbox L1（Docker driver + 预热池 + 内置 tool） |
-| W4 | LLM + 可变历史进阶（Fold / 子 Agent 折叠） |
+| W4 | LLM function-calling 闭环 + History Patch / Fold（复用 W3 tool registry） |
 | W5 | Skill 索引 + Selector |
 | W6 | RAG（pgvector + reranker） |
 | W7 | Multi-Agent 编排 + 上下文压缩 |

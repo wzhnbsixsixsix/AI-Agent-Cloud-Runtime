@@ -385,18 +385,91 @@ AgentForge/
 
 ## 7. 路线图（10 周，求职冲刺节奏）
 
-| 周 | 阶段 | 交付（每周末必须能 demo） |
-|---|---|---|
-| W1 | 骨架 | Gateway + Scheduler + Worker 单体跑通，echo agent，Docker Compose 一键起 |
-| W2 | ACP 协议 v1 | 帧编解码 + 双向流 + 断线续传，单测 + benchmark |
-| W3 | Sandbox L1 | Docker driver + 预热池 + 隔离 + 5 个内置 tool |
-| W4 | LLM + History | OpenAI/Claude provider + 流式 + 可变历史 + Patch/Fold |
-| W5 | Skill | 索引 + Selector + 缓存 + 5 个内置 skill |
-| W6 | RAG | pgvector + 混合检索 + reranker |
-| W7 | Multi-Agent | Supervisor + Pipeline + 上下文压缩三级 |
-| W8 | Hook + 微服务化 | WASM Hook + gRPC 拆分 + etcd 发现 + Raft |
-| W9 | 可观测 + 压测 | OTel + Grafana 大盘 + K6 压测，产出报告 |
-| W10 | 打磨 + 文档 | README、架构图、ADR、demo 视频、简历话术 |
+| 周 | 阶段 | 交付（每周末必须能 demo） | 状态 |
+|---|---|---|---|
+| W1 | 骨架 | Gateway + Scheduler + Worker 单体跑通，echo agent，Docker Compose 一键起 | ✅ 完成 |
+| W2 | ACP 协议 v1 | 帧编解码 + 双向流 + 断线续传，单测 + benchmark | ✅ 完成 |
+| W3 | Sandbox L1 | Docker driver + 预热池 + 隔离 + 5 个内置 tool | ✅ 完成 |
+| W4 | LLM + History | OpenAI/Claude provider + 流式 + 可变历史 + Patch/Fold | 🔜 进行中 |
+| W5 | Skill | 索引 + Selector + 缓存 + 5 个内置 skill | ⏳ 待开工 |
+| W6 | RAG | pgvector + 混合检索 + reranker | ⏳ 待开工 |
+| W7 | Multi-Agent | Supervisor + Pipeline + 上下文压缩三级 | ⏳ 待开工 |
+| W8 | Hook + 微服务化 | WASM Hook + gRPC 拆分 + etcd 发现 + Raft | ⏳ 待开工 |
+| W9 | 可观测 + 压测 | OTel + Grafana 大盘 + K6 压测，产出报告 | ⏳ 待开工 |
+| W10 | 打磨 + 文档 | README、架构图、ADR、demo 视频、简历话术 | ⏳ 待开工 |
+
+> 仓库：<https://github.com/wzhnbsixsixsix/AI-Agent-Cloud-Runtime> · 当前 `main` 提交 `d21f72c (feat(w3): sandbox L1 ...)`。
+
+### 7.1 实施进度同步（W1–W3 已交付）
+
+> 以下记录到 **2026-06-05** 为止"实际写出来 vs 设计文档"的对账，避免后面回头找细节。
+
+#### W1 — 骨架（✅ 完成）
+
+**已做**：
+- `cmd/gateway` + `cmd/scheduler` + `cmd/worker` + `cmd/agentctl` 四个二进制，`deploy/docker-compose.yml` 一键起 `gateway + scheduler + worker + redis`
+- gRPC `RunAgent` 双向流：`agentctl run --prompt "..."` → gateway → scheduler → Redis Stream `queue:agent_tasks` → worker consumer → OpenAI 兼容 API 流式 token → 反向流回 CLI
+- Redis Stream Consumer Group + ack + 重试 + DLQ；Worker 心跳；状态机最小子集（PENDING/RUNNING/DONE/FAILED）
+- `internal/storage/redis` 封装 + key 规范集中在 `keys.go`
+- `internal/llm/openai` provider（流式）
+
+**与设计的差异**：
+- 状态机暂只有 4 个态，`WAITING_TOOL` / `COMPACTING` 留到 W4 / W7
+- Worker 选择走的是 Redis Stream 抢占式消费而非"调度器主动选 Worker"——简化版，W8 起 Raft 后再回填
+- 元数据未起 Postgres，Run 状态只在 Redis；Postgres 推迟到 W6 上 RAG 时统一开通
+
+#### W2 — ACP 自研协议（✅ 完成）
+
+**已做**：
+- `pkg/acp/spec.md` + 帧编解码（Magic/Ver/Type/Flags/SeqID/Length/Payload，与设计文档 §4.1 帧格式一致）
+- `internal/acp` 三件套：server / session / event-cache（Redis ZSet 环形缓冲）+ client
+- gateway 同时监听 `:8080` (gRPC) 与 `:8090` (ACP)；gRPC 注册 `health.v1`
+- 断线续传：`RESUME{run_id, last_seq}` 从 ZSet 回放
+- `agentctl --proto acp|grpc` 切协议；`agentctl resume --run-id ... --last-seq ...`
+- `bin/bench rtt | throughput | connect` 一条命令对比 ACP vs gRPC
+- 单测：codec 5 例 + ACP server happy/ping/resume 3 例
+
+**与设计的差异（待 W9 / W10 回填）**：
+- ⚠️ **Window Update 背压帧暂未实现**——目前靠 TCP socket buffer 自然背压，正式压测前补
+- ⚠️ **zstd 压缩 Flag 暂未启用**——帧格式预留位已留好，没拉 zstd 依赖
+- ⚠️ **零拷贝 + sync.Pool buffer 复用未做完**——当前 `ReadFrame` 还在拷贝 payload，简历上"零分配热路径"的说法等 W9 用 pprof 验证后再写
+- ⚠️ **MCP 兼容层**未做，挪到 W4 之后做（与 LLM tool-use 一起接更顺）
+- ✅ "吞吐 3.8x"目前 `bin/bench` 跑出来的是工程联调数据，正式数字等 W9 在压测机上 K6 + ghz 重测
+
+#### W3 — Sandbox L1（✅ 完成）
+
+**已做**：
+- `internal/sandbox`：`Driver` 接口 + `DockerDriver`（预热池 N=4 idle 常驻 + 异步补位）+ `MemoryDriver`（无 docker 时降级，仅工程联调用）
+- 容器隔离矩阵：`network=none` / read-only rootfs + `/tmp` tmpfs / `cap_drop ALL` + `no-new-privileges` / memory + cpu quota + pids cgroup / 单次 exec 硬超时 60s
+- Per-Run 语义：pop slot → bind 宿主 `/tmp/agentforge/<slot>/runs/<run_id>` ⇄ 容器 `/workspace/runs/<run_id>` → 用完 force remove + 异步 spawn 新 slot 补位
+- `internal/tool` 5 个内置 tool（**bash / fs_read / fs_write / fs_list / http_fetch**）+ `safePath` 防 `../` 越出 workspace + `Descriptor` 兼容 OpenAI / Anthropic JSON Schema
+- 独立 Redis Stream `queue:tool_tasks` + Pub/Sub `tool_results:{call_id}` 做请求-响应（不动 W1 的 `queue:agent_tasks`）
+- gRPC 新增 `ListTools` / `ExecTool` 两个 RPC + `agentctl tool list [--schema]` / `agentctl tool exec <name> --args '<json>'`
+- `deploy/docker-compose.yml`：worker 容器挂 `/var/run/docker.sock` + 与宿主共享 `SANDBOX_WORKSPACE_HOST` bind
+- `.env.example` 覆盖 `SANDBOX_*` / `TOOL_*` 全部可调参数
+- 单测：MemoryDriver 4 例 + tool 6 组；docker 集成测试用 build tag `integration_docker` 隔离（需要 docker daemon）
+
+**与设计的差异**：
+- 设计原文写"每 Run = 1 容器、用完销毁"——已实现，但底下用预热池 pop slot 而非冷拉镜像，**冷启动从 ~800ms 降到取一个 idle slot 的 ~20ms 量级**（W9 压测时正式出数）
+- `http_fetch` **故意不走 sandbox**：sandbox `network=none`，所以 http_fetch 在 worker 主进程跑，靠 `TOOL_HTTP_ALLOW_LIST` + `TOOL_HTTP_MAX_BYTES` 兜底；这个设计没在原 §4.4 里——是 W3 实现期的合理偏差
+- ⚠️ **gVisor (L2) / Firecracker (L3) 暂未做**——简历上"三级沙箱"目前只交付 L1，L2/L3 推迟到 W8 / W10（写 ADR 时论证 L1 已够 demo，L2/L3 列为已设计未实现的扩展点）
+- ⚠️ **CRIU checkpoint 秒级恢复**未做——目前预热池靠"常驻 idle 容器"硬抗冷启，CRIU 留作 W10 加分项
+- ⚠️ **eBPF syscall 审计 + 黑名单 kill**未做——同样进 W10 加分项；当前 `cap_drop ALL` + `read-only rootfs` 已经足够 demo 隔离
+
+#### W3 收尾的运行时验证（待用户机器跑）
+
+本机无 Go/Docker，以下两步会在 docker build 时自动触发，**用户在能跑 docker 的机器上 `make up` 即可**：
+- `go mod tidy` 拉 `github.com/docker/docker/...`（Dockerfile builder 阶段已含）
+- `pkg/proto/gen/*.pb.go` 重新生成（Dockerfile `bufgen` stage 跑 `buf generate`）
+
+端到端 demo 命令见 `README.md` §9「W3 demo」（含网络隔离 / read-only rootfs 验证脚本）。
+
+#### 接下来 — W4 计划（🔜 进行中）
+
+- LLM function-calling loop：复用 W3 的 `tool.Registry` / `Descriptor`，把 OpenAI `tools` 字段 + Anthropic `tool_use` 接进 worker 的 LLM 流式循环
+- `internal/history` 落地 §4.2 设计：`Append / Patch / Hide / Fold / Render`，存 Redis Hash + ZSet（score=ULID）+ Lua 原子写
+- `agentctl run` 支持续跑带工具的 agent；状态机补 `WAITING_TOOL`
+- 单测覆盖 history Patch / Fold 边界 + provider 流式中 tool_call 切片合并
 
 ---
 

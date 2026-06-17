@@ -40,20 +40,67 @@ func NewOpenAI(baseURL, apiKey, model string, timeout time.Duration) *OpenAIProv
 func (p *OpenAIProvider) Name() string { return "openai" }
 
 type openaiChatReq struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Stream      bool      `json:"stream"`
-	Temperature float32   `json:"temperature,omitempty"`
-	MaxTokens   int       `json:"max_tokens,omitempty"`
+	Model       string             `json:"model"`
+	Messages    []openaiMessage    `json:"messages"`
+	Tools       []openaiToolDef    `json:"tools,omitempty"`
+	Stream      bool               `json:"stream"`
+	Temperature float32            `json:"temperature,omitempty"`
+	MaxTokens   int                `json:"max_tokens,omitempty"`
+}
+
+type openaiMessage struct {
+	Role       Role             `json:"role"`
+	Content    string           `json:"content,omitempty"`
+	Name       string           `json:"name,omitempty"`
+	ToolCallID string           `json:"tool_call_id,omitempty"`
+	ToolCalls  []openaiToolCall `json:"tool_calls,omitempty"`
+}
+
+type openaiToolDef struct {
+	Type     string             `json:"type"`
+	Function openaiToolFunction `json:"function"`
+}
+
+type openaiToolFunction struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Parameters  json.RawMessage `json:"parameters,omitempty"`
+}
+
+type openaiToolCall struct {
+	ID       string                 `json:"id,omitempty"`
+	Type     string                 `json:"type,omitempty"`
+	Function openaiToolCallFunction `json:"function"`
+}
+
+type openaiToolCallFunction struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
 }
 
 type openaiStreamChunk struct {
 	Choices []struct {
 		Delta struct {
-			Content string `json:"content"`
+			Content   string `json:"content"`
+			ToolCalls []struct {
+				Index    int    `json:"index"`
+				ID       string `json:"id,omitempty"`
+				Type     string `json:"type,omitempty"`
+				Function struct {
+					Name      string `json:"name,omitempty"`
+					Arguments string `json:"arguments,omitempty"`
+				} `json:"function,omitempty"`
+			} `json:"tool_calls,omitempty"`
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason,omitempty"`
 	} `json:"choices"`
+}
+
+type toolCallBuilder struct {
+	ID        string
+	Type      string
+	Name      string
+	Arguments strings.Builder
 }
 
 // Stream 发起请求并返回 token 通道。
@@ -64,7 +111,8 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req Req) (<-chan TokenEvent
 	}
 	body := openaiChatReq{
 		Model:       model,
-		Messages:    req.Messages,
+		Messages:    toOpenAIMessages(req.Messages),
+		Tools:       toOpenAITools(req.Tools),
 		Stream:      true,
 		Temperature: req.Temperature,
 		MaxTokens:   req.MaxTokens,
@@ -97,6 +145,8 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req Req) (<-chan TokenEvent
 	go func() {
 		defer close(out)
 		defer resp.Body.Close()
+		builders := map[int]*toolCallBuilder{}
+		order := make([]int, 0, 4)
 		reader := bufio.NewReader(resp.Body)
 		for {
 			line, err := reader.ReadBytes('\n')
@@ -122,8 +172,37 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req Req) (<-chan TokenEvent
 								return
 							}
 						}
+						for _, tc := range ch.Delta.ToolCalls {
+							b := builders[tc.Index]
+							if b == nil {
+								b = &toolCallBuilder{}
+								builders[tc.Index] = b
+								order = append(order, tc.Index)
+							}
+							if tc.ID != "" {
+								b.ID = tc.ID
+							}
+							if tc.Type != "" {
+								b.Type = tc.Type
+							}
+							if tc.Function.Name != "" {
+								b.Name = tc.Function.Name
+							}
+							if tc.Function.Arguments != "" {
+								b.Arguments.WriteString(tc.Function.Arguments)
+							}
+						}
 						if ch.FinishReason != nil && *ch.FinishReason != "" {
-							send(ctx, out, TokenEvent{Done: true})
+							reason := StopReason(*ch.FinishReason)
+							if reason == StopReasonToolCalls && len(builders) > 0 {
+								if !send(ctx, out, TokenEvent{
+									ToolCalls:  builtToolCalls(order, builders),
+									StopReason: StopReasonToolCalls,
+								}) {
+									return
+								}
+							}
+							send(ctx, out, TokenEvent{Done: true, StopReason: reason})
 							return
 						}
 					}
@@ -140,6 +219,76 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req Req) (<-chan TokenEvent
 		}
 	}()
 	return out, nil
+}
+
+func toOpenAIMessages(in []Message) []openaiMessage {
+	out := make([]openaiMessage, 0, len(in))
+	for _, m := range in {
+		om := openaiMessage{
+			Role:       m.Role,
+			Content:    m.Content,
+			Name:       m.Name,
+			ToolCallID: m.ToolCallID,
+		}
+		if len(m.ToolCalls) > 0 {
+			om.ToolCalls = make([]openaiToolCall, 0, len(m.ToolCalls))
+			for _, tc := range m.ToolCalls {
+				typ := tc.Type
+				if typ == "" {
+					typ = "function"
+				}
+				om.ToolCalls = append(om.ToolCalls, openaiToolCall{
+					ID:   tc.ID,
+					Type: typ,
+					Function: openaiToolCallFunction{
+						Name:      tc.Name,
+						Arguments: tc.Arguments,
+					},
+				})
+			}
+		}
+		out = append(out, om)
+	}
+	return out
+}
+
+func toOpenAITools(in []ToolDefinition) []openaiToolDef {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]openaiToolDef, 0, len(in))
+	for _, t := range in {
+		out = append(out, openaiToolDef{
+			Type: "function",
+			Function: openaiToolFunction{
+				Name:        t.Name,
+				Description: t.Description,
+				Parameters:  t.Parameters,
+			},
+		})
+	}
+	return out
+}
+
+func builtToolCalls(order []int, builders map[int]*toolCallBuilder) []ToolCall {
+	out := make([]ToolCall, 0, len(order))
+	for _, idx := range order {
+		b := builders[idx]
+		if b == nil {
+			continue
+		}
+		typ := b.Type
+		if typ == "" {
+			typ = "function"
+		}
+		out = append(out, ToolCall{
+			ID:        b.ID,
+			Type:      typ,
+			Name:      b.Name,
+			Arguments: b.Arguments.String(),
+		})
+	}
+	return out
 }
 
 func send(ctx context.Context, ch chan<- TokenEvent, ev TokenEvent) bool {

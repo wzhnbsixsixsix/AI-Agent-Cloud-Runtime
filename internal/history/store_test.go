@@ -76,3 +76,56 @@ func TestPatchNotFound(t *testing.T) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
 }
+
+func TestFold(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+	runID := "run-fold"
+
+	first, err := s.Append(ctx, runID, Message{Role: RoleUser, Content: "one"})
+	if err != nil {
+		t.Fatalf("append first: %v", err)
+	}
+	second, err := s.Append(ctx, runID, Message{Role: RoleAssistant, Content: "two"})
+	if err != nil {
+		t.Fatalf("append second: %v", err)
+	}
+	if _, err := s.Append(ctx, runID, Message{Role: RoleUser, Content: "three"}); err != nil {
+		t.Fatalf("append third: %v", err)
+	}
+
+	foldID, err := s.Fold(ctx, runID, first, second, "summary")
+	if err != nil {
+		t.Fatalf("fold: %v", err)
+	}
+	msgs, err := s.Render(ctx, runID)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("want 2 visible messages, got %d: %+v", len(msgs), msgs)
+	}
+	if msgs[0].Content != "three" || msgs[1].Content != "summary" {
+		t.Fatalf("unexpected render after fold: %+v", msgs)
+	}
+	folded, err := s.load(ctx, runID, foldID)
+	if err != nil {
+		t.Fatalf("load folded: %v", err)
+	}
+	if folded.Tags["compacted"] != "true" || folded.Tags["fold_from"] != first || folded.Tags["fold_to"] != second {
+		t.Fatalf("bad fold tags: %+v", folded.Tags)
+	}
+}
+
+func TestFoldNotFound(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+	runID := "run-fold-missing"
+	first, err := s.Append(ctx, runID, Message{Role: RoleUser, Content: "one"})
+	if err != nil {
+		t.Fatalf("append first: %v", err)
+	}
+	if _, err := s.Fold(ctx, runID, first, "missing", "summary"); err != ErrNotFound {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}

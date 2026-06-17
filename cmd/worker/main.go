@@ -74,10 +74,32 @@ func main() {
 		os.Exit(1)
 	}
 
-	runner := agent.NewRunner(store, provider, pubsub)
-
 	// 注册到 scheduler（best effort）
 	go runScheduler(rootCtx, logger, cfg, workerID)
+
+	// ---- W3/W4: sandbox + tools ----
+	driver, dErr := makeSandboxDriver(rootCtx, cfg, logger)
+	if dErr != nil {
+		// sandbox 初始化失败不致命：worker 仍可处理 agent task；只是 tool consumer / agent tool-calling 不上。
+		logger.Warn("sandbox driver disabled", "driver", cfg.SandboxDriver, "err", dErr)
+	}
+	var tRunner *tool.Runner
+	if driver != nil {
+		registry := tool.Builtins(tool.BuiltinsConfig{
+			HTTPAllowList: cfg.ToolHTTPAllowList,
+			HTTPMaxBytes:  cfg.ToolHTTPMaxBytes,
+		})
+		tRunner = &tool.Runner{
+			Registry:    registry,
+			Driver:      driver,
+			Log:         logger.With("comp", "tool"),
+			HardTimeout: cfg.SandboxExecHard,
+		}
+	}
+
+	runner := agent.NewRunner(store, provider, pubsub)
+	runner.ToolRunner = tRunner
+	runner.ToolMaxSteps = cfg.AgentToolMaxSteps
 
 	var wg sync.WaitGroup
 
@@ -97,31 +119,15 @@ func main() {
 		}(consumer)
 	}
 
-	// ---- W3: sandbox + tool consumers ----
-	driver, dErr := makeSandboxDriver(rootCtx, cfg, logger)
-	if dErr != nil {
-		// sandbox 初始化失败不致命：worker 仍可处理 agent task；只是 tool consumer 不上。
-		logger.Warn("sandbox driver disabled", "driver", cfg.SandboxDriver, "err", dErr)
-	}
 	var toolWG sync.WaitGroup
-	if driver != nil {
+	if tRunner != nil {
 		toolQ := queue.NewToolStream(rdb)
 		if err := toolQ.EnsureGroup(rootCtx, cfg.ToolConsumerGroup); err != nil {
 			logger.Error("ensure tool group", "err", err)
 			os.Exit(1)
 		}
 		toolBus := queue.NewToolBus(rdb)
-		registry := tool.Builtins(tool.BuiltinsConfig{
-			HTTPAllowList: cfg.ToolHTTPAllowList,
-			HTTPMaxBytes:  cfg.ToolHTTPMaxBytes,
-		})
-		tRunner := &tool.Runner{
-			Registry:    registry,
-			Driver:      driver,
-			Bus:         toolBus,
-			Log:         logger.With("comp", "tool"),
-			HardTimeout: cfg.SandboxExecHard,
-		}
+		tRunner.Bus = toolBus
 
 		conc := cfg.ToolConcurrency
 		if conc <= 0 {
@@ -138,7 +144,7 @@ func main() {
 				}
 			}(consumer)
 		}
-		logger.Info("tool consumer running", "concurrency", conc, "tools", len(registry.List()))
+		logger.Info("tool consumer running", "concurrency", conc, "tools", len(tRunner.Registry.List()))
 	}
 
 	<-rootCtx.Done()

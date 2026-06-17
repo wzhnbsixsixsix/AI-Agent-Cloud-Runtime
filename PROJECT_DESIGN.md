@@ -390,7 +390,7 @@ AgentForge/
 | W1 | 骨架 | Gateway + Scheduler + Worker 单体跑通，echo agent，Docker Compose 一键起 | ✅ 完成 |
 | W2 | ACP 协议 v1 | 帧编解码 + 双向流 + 断线续传，单测 + benchmark | ✅ 完成 |
 | W3 | Sandbox L1 | Docker driver + 预热池 + 隔离 + 5 个内置 tool | ✅ 完成 |
-| W4 | LLM + History | OpenAI/Claude provider + 流式 + 可变历史 + Patch/Fold | 🔜 进行中 |
+| W4 | LLM + History | OpenAI provider + function-calling 闭环 + 可变历史 Fold | ✅ 完成 |
 | W5 | Skill | 索引 + Selector + 缓存 + 5 个内置 skill | ⏳ 待开工 |
 | W6 | RAG | pgvector + 混合检索 + reranker | ⏳ 待开工 |
 | W7 | Multi-Agent | Supervisor + Pipeline + 上下文压缩三级 | ⏳ 待开工 |
@@ -464,12 +464,28 @@ AgentForge/
 
 端到端 demo 命令见 `README.md` §9「W3 demo」（含网络隔离 / read-only rootfs 验证脚本）。
 
-#### 接下来 — W4 计划（🔜 进行中）
+#### W4 — OpenAI Tool-Calling + History Fold（✅ 完成）
 
-- LLM function-calling loop：复用 W3 的 `tool.Registry` / `Descriptor`，把 OpenAI `tools` 字段 + Anthropic `tool_use` 接进 worker 的 LLM 流式循环
-- `internal/history` 落地 §4.2 设计：`Append / Patch / Hide / Fold / Render`，存 Redis Hash + ZSet（score=ULID）+ Lua 原子写
-- `agentctl run` 支持续跑带工具的 agent；状态机补 `WAITING_TOOL`
-- 单测覆盖 history Patch / Fold 边界 + provider 流式中 tool_call 切片合并
+**已做**：
+- `internal/llm` 扩展 tool-aware 类型：`ToolDefinition` / `ToolCall` / `Message.ToolCalls` / `Message.ToolCallID` / `TokenEvent.ToolCalls`
+- OpenAI 兼容 provider 支持 `tools` 请求字段，并能把 streamed `delta.tool_calls` 的 name / arguments 分片聚合成完整 `ToolCall`
+- `agent.Runner` 支持 bounded function-calling loop：纯文本路径保持不变；模型返回 tool call 后进入 `WAITING_TOOL`，worker 本地执行 W3 tool，再追加 `role=tool` 消息继续请求模型
+- worker bootstrap 复用同一个 `tool.Registry` + `sandbox.Driver`，agent loop 不绕回 gateway / Redis RPC
+- 新增 `AGENT_TOOL_MAX_STEPS`（默认 5），超过最大 tool 轮数返回 `tool_loop_limit`
+- `internal/history.Store` 新增 `Fold(ctx, runID, fromID, toID, summary)`：闭区间软删 + 追加 `compacted=true` 摘要消息
+- 单测覆盖 OpenAI text / tool_call streaming / tools 请求体、History Fold、Runner 文本路径 / tool loop / loop cap
+
+**与设计的差异**：
+- Anthropic `tool_use` 暂未实现；W4 只做 OpenAI 兼容闭环，避免同时扩两套 provider wire shape
+- History Fold 先沿用现有 Redis Hash + ZSet + pipeline；Lua 原子写和自动压缩策略留到 W7 上下文压缩一起做
+- `agent.proto` 未新增 RPC，`agentctl run` 保持原入口；tool-calling 是 worker 内部能力
+
+#### 接下来 — W5 计划（🔜 进行中）
+
+- Skill 索引：扫描 `skills/**/SKILL.md` frontmatter，只加载 name / description / sha256 / path
+- Selector：先用规则 + mock selector 跑通，再接轻量 LLM function-call `load_skills(names)`
+- 缓存：按 query 语义哈希缓存 selector 结果，主 Agent 只加载命中的完整 Skill 内容
+- 单测覆盖 frontmatter 解析、热更新去重、selector 输出校验和 cache hit
 
 ---
 

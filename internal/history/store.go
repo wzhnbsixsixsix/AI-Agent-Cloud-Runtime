@@ -33,6 +33,8 @@ type Store interface {
 	Patch(ctx context.Context, runID, msgID, content string) error
 	// Hide 软删（Visible=false）。
 	Hide(ctx context.Context, runID, msgID string) error
+	// Fold 把一个闭区间消息折叠成一条可见摘要消息。
+	Fold(ctx context.Context, runID string, fromID, toID, summary string) (string, error)
 	// Render 返回当前 visible 消息按时间顺序的视图。
 	Render(ctx context.Context, runID string) ([]Message, error)
 }

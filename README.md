@@ -3,11 +3,12 @@
 > 项目代号：**AgentForge** — 云原生多智能体运行时。  
 > 详细设计见 [`PROJECT_DESIGN.md`](./PROJECT_DESIGN.md)。
 
-当前进度：**W3 完成 — Sandbox L1（Docker driver + 预热池 + 5 个内置 tool）**。
+当前进度：**W4 完成 — OpenAI Tool-Calling 闭环 + History Fold**。
 
 - W1：可在本地用 Docker Compose 一键启动 `gateway + scheduler + worker + redis`，通过 `agentctl run --prompt "..."` 流式收到 OpenAI 兼容 API 的逐 token 响应。
 - W2：gateway 同时监听 `:8080`(gRPC) 与 `:8090`(ACP)。`agentctl --proto acp` 可走自研协议；新增 `agentctl resume --run-id ...` 演示断线续传；`bin/bench` 工具一条命令打两条路径出对比数据。
 - **W3**：worker 内置 Docker sandbox driver + 预热池 + bash/fs_read/fs_write/fs_list/http_fetch 5 个 tool；新增 gRPC `ListTools` / `ExecTool` 两个 RPC；`agentctl tool list` / `agentctl tool exec <name> --args '<json>'` 直接调用，留出 W4 接入 LLM function-calling 的钩子。
+- **W4**：worker 的 `agent.Runner` 已接入 OpenAI 兼容 function-calling；模型可在一次 `agentctl run` 中请求内置 tool，本地 sandbox 执行后把 `role=tool` 结果喂回模型继续生成；`internal/history` 新增 `Fold`，支持把历史区间折叠成一条 compacted 摘要。
 
 ---
 
@@ -208,6 +209,13 @@ make down   # 停服并清理 redis 数据
 - [x] gRPC 新增 `ListTools` / `ExecTool` RPC + `agentctl tool list` / `agentctl tool exec`
 - [x] 单测：MemoryDriver 4 例 + tool 6 组；docker 集成测试通过 build tag `integration_docker` 隔离
 
+### W4 — OpenAI Tool-Calling + History Fold
+- [x] `internal/llm`：新增 tool-aware `Message` / `ToolDefinition` / `ToolCall` / `TokenEvent`，OpenAI SSE 支持 streamed `delta.tool_calls` 分片聚合
+- [x] `internal/agent.Runner`： bounded function-calling loop，状态机补齐 `RUNNING → WAITING_TOOL → RUNNING`，默认最多 5 轮 tool 调用
+- [x] worker 复用 W3 的 `tool.Registry` + `sandbox.Driver` 做本地 tool 执行，不绕回 gateway / Redis RPC
+- [x] `internal/history.Store` 新增 `Fold(ctx, runID, fromID, toID, summary)`，把闭区间消息软删并追加一条 `compacted=true` 摘要
+- [x] 单测覆盖 OpenAI tool_call 分片、请求体 tools 字段、History Fold、Runner 文本路径 / tool loop / loop cap
+
 ## 8. W2 demo 命令
 
 ```bash
@@ -335,11 +343,35 @@ make up
 | `TOOL_HTTP_ALLOW_LIST` | _空_ | 逗号分隔的 host 白名单；空则禁用 |
 | `GATEWAY_TOOL_CALL_TIMEOUT` | `60s` | gateway 等 worker 结果的超时 |
 
-## 10. Roadmap（参考 PROJECT_DESIGN.md §7）
+## 10. W4 demo — Agent 自动调用 Tool
+
+W4 不新增 RPC；仍然使用 `agentctl run`。区别是 worker 会把 W3 的 tool schema 注入 OpenAI 兼容 `tools` 字段，模型返回 `tool_calls` 后由 worker 本地执行，再把 `role=tool` 结果喂回模型继续生成。
+
+```bash
+# 1) 起服，确保 .env 使用 OpenAI 兼容模型且 sandbox 开启
+make up
+
+# 2) 让模型自己决定调用 fs_write / fs_read / bash
+./bin/agentctl run --prompt \
+  "在工作目录创建 hello.txt，内容为 AgentForge W4，然后读回文件内容并用一句话总结。"
+
+# 3) 如需防止模型循环调用工具，可调整最大 tool 轮数
+AGENT_TOOL_MAX_STEPS=3 make up
+```
+
+期望：CLI 仍然流式输出最终回答；worker 日志中能看到 `WAITING_TOOL` 状态和具体 tool 调用。若 `SANDBOX_DRIVER=disabled` 或 Docker 不可用，worker 不会把 tools 暴露给 LLM，`agentctl run` 会自动退回 W1/W3 的纯文本路径。
+
+### 关键环境变量（W4）
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `AGENT_TOOL_MAX_STEPS` | `5` | 单次 Run 中模型/tool 循环的最大轮数，超出后返回 `tool_loop_limit` |
+
+## 11. Roadmap（参考 PROJECT_DESIGN.md §7）
 
 | 周 | 主题 |
 |---|---|
-| W4 | LLM function-calling 闭环 + History Patch / Fold（复用 W3 tool registry） |
+| W4 | ✅ LLM function-calling 闭环 + History Patch / Fold（复用 W3 tool registry） |
 | W5 | Skill 索引 + Selector |
 | W6 | RAG（pgvector + reranker） |
 | W7 | Multi-Agent 编排 + 上下文压缩 |

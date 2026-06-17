@@ -71,6 +71,7 @@ type Worker struct {
 	ToolConcurrency   int      `env:"TOOL_CONCURRENCY"     envDefault:"4"`
 	ToolHTTPMaxBytes  int64    `env:"TOOL_HTTP_MAX_BYTES"  envDefault:"1048576"`
 	ToolHTTPAllowList []string `env:"TOOL_HTTP_ALLOW_LIST" envSeparator:","`
+	AgentToolMaxSteps int      `env:"AGENT_TOOL_MAX_STEPS" envDefault:"5"`
 }
 
 // AgentCtl CLI 配置。

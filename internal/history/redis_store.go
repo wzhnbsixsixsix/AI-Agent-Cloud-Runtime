@@ -92,6 +92,73 @@ func (s *RedisStore) Hide(ctx context.Context, runID, msgID string) error {
 	return s.saveLocked(ctx, runID, m)
 }
 
+func (s *RedisStore) Fold(ctx context.Context, runID string, fromID, toID, summary string) (string, error) {
+	if _, err := s.load(ctx, runID, fromID); err != nil {
+		return "", err
+	}
+	if _, err := s.load(ctx, runID, toID); err != nil {
+		return "", err
+	}
+	if fromID > toID {
+		fromID, toID = toID, fromID
+	}
+	ids, err := s.cli.ZRangeByLex(ctx, redisstore.Keys.HistoryOrder(runID), &redis.ZRangeBy{
+		Min: "[" + fromID,
+		Max: "[" + toID,
+	}).Result()
+	if err != nil {
+		return "", err
+	}
+	if len(ids) == 0 {
+		return "", ErrNotFound
+	}
+
+	msgs := make([]*Message, 0, len(ids))
+	for _, id := range ids {
+		m, err := s.load(ctx, runID, id)
+		if err != nil {
+			return "", err
+		}
+		if m.Visible {
+			m.Visible = false
+			m.Version++
+			msgs = append(msgs, m)
+		}
+	}
+
+	pipe := s.cli.TxPipeline()
+	for _, m := range msgs {
+		payload, err := json.Marshal(m)
+		if err != nil {
+			return "", fmt.Errorf("marshal message: %w", err)
+		}
+		pipe.HSet(ctx, redisstore.Keys.HistoryMsgs(runID), m.ID, string(payload))
+	}
+
+	folded := Message{
+		ID:      obs.NewRunID(),
+		Role:    RoleAssistant,
+		Content: summary,
+		Visible: true,
+		Version: 1,
+		Tags: map[string]string{
+			"compacted": "true",
+			"fold_from": fromID,
+			"fold_to":   toID,
+		},
+	}
+	payload, err := json.Marshal(folded)
+	if err != nil {
+		return "", fmt.Errorf("marshal folded message: %w", err)
+	}
+	pipe.HSet(ctx, redisstore.Keys.HistoryMsgs(runID), folded.ID, string(payload))
+	pipe.ZAdd(ctx, redisstore.Keys.HistoryOrder(runID), redis.Z{Score: 0, Member: folded.ID})
+	if _, err := pipe.Exec(ctx); err != nil {
+		return "", fmt.Errorf("fold: %w", err)
+	}
+	return folded.ID, nil
+}
+
 func (s *RedisStore) Render(ctx context.Context, runID string) ([]Message, error) {
 	ids, err := s.cli.ZRangeByLex(ctx, redisstore.Keys.HistoryOrder(runID), &redis.ZRangeBy{
 		Min: "-", Max: "+",

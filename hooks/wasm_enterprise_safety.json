@@ -1,0 +1,8 @@
+{
+  "id": "wasm-enterprise-safety",
+  "event": "PreLLM",
+  "enabled": true,
+  "type": "wasm",
+  "path": "wasm_enterprise_safety.wasm",
+  "description": "WASI demo hook that appends enterprise safety context through wazero."
+}

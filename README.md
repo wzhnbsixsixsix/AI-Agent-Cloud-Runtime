@@ -3,12 +3,15 @@
 > 项目代号：**AgentForge** — 云原生多智能体运行时。  
 > 详细设计见 [`PROJECT_DESIGN.md`](./PROJECT_DESIGN.md)。
 
-当前进度：**W4 完成 — OpenAI Tool-Calling 闭环 + History Fold**。
+当前进度：**W7 完成 — Multi-Agent + Context Compression 纵切**。
 
 - W1：可在本地用 Docker Compose 一键启动 `gateway + scheduler + worker + redis`，通过 `agentctl run --prompt "..."` 流式收到 OpenAI 兼容 API 的逐 token 响应。
 - W2：gateway 同时监听 `:8080`(gRPC) 与 `:8090`(ACP)。`agentctl --proto acp` 可走自研协议；新增 `agentctl resume --run-id ...` 演示断线续传；`bin/bench` 工具一条命令打两条路径出对比数据。
 - **W3**：worker 内置 Docker sandbox driver + 预热池 + bash/fs_read/fs_write/fs_list/http_fetch 5 个 tool；新增 gRPC `ListTools` / `ExecTool` 两个 RPC；`agentctl tool list` / `agentctl tool exec <name> --args '<json>'` 直接调用，留出 W4 接入 LLM function-calling 的钩子。
 - **W4**：worker 的 `agent.Runner` 已接入 OpenAI 兼容 function-calling；模型可在一次 `agentctl run` 中请求内置 tool，本地 sandbox 执行后把 `role=tool` 结果喂回模型继续生成；`internal/history` 新增 `Fold`，支持把历史区间折叠成一条 compacted 摘要。
+- **W5**：新增 `internal/skill` 动态加载链路，worker 启动时扫描 `skills/**/SKILL.md`，按 prompt 规则选择 Top-K skill 并把完整内容注入本次 LLM system context；内置 5 个 skill 覆盖 sandbox 文件、bash、HTTP、Go 测试和项目说明。
+- **W6**：新增 `internal/rag`，支持本地文本/Markdown/代码文件切片、确定性 hash embedding、Postgres + pgvector 存储、hybrid query、`agentctl rag ingest/query`，worker 可在 Run 前检索相关 chunk 并以 `<untrusted>` context 注入 LLM。
+- **W7**：新增 `internal/orchestrator`，支持本地 Supervisor subagent、pipeline DAG demo 和 History 自动压缩；`dispatch_subagent` 可作为 LLM tool 暴露，`agentctl pipeline run --file ...` 可运行多 step 编排。
 
 ---
 
@@ -84,10 +87,14 @@ AI-Agent-Cloud-Runtime/
 │   ├── history/      # 可变历史（Redis Hash+ZSet）
 │   ├── llm/          # Provider（OpenAI SSE / Mock / factory）
 │   ├── obs/          # slog logger + trace_id
+│   ├── orchestrator/ # W7 Supervisor / Pipeline / Compact
 │   ├── queue/        # Redis Stream 消费组 + Pub/Sub
+│   ├── rag/          # W6 chunking / embedding / pgvector retrieve
 │   ├── scheduler/    # Scheduler interface + Redis 实现
+│   ├── skill/        # W5 Skill 索引 + Selector + 缓存
 │   └── storage/redis # 客户端工厂 + key 模板
 ├── pkg/proto/        # agent.proto / scheduler.proto（gen/ 由 buf 生成）
+├── skills/           # 内置 SKILL.md
 ├── build/Dockerfile  # 多阶段（buf-gen → go-build → distroless）
 ├── deploy/           # docker-compose.yml + override 示例
 ├── Makefile
@@ -128,7 +135,7 @@ docker compose -f deploy/docker-compose.yml run --rm \
   --build-arg BIN=agentctl \
   worker /app run --prompt "用一句话介绍你自己"
 
-# 或者本地装 Go 后：
+# 或者用 Makefile 构建 CLI；本机没有 Go 时会自动使用 golang Docker 镜像
 make proto && make build
 GATEWAY_DIAL_ADDR=localhost:8080 ./bin/agentctl run --prompt "用一句话介绍你自己"
 ```
@@ -154,7 +161,7 @@ make down   # 停服并清理 redis 数据
 |------|------|
 | `make help` | 列出全部 target |
 | `make proto` | 用 docker buf 镜像生成 `pkg/proto/gen/*.pb.go` |
-| `make build` | 本地编译四个二进制到 `bin/`（需 Go） |
+| `make build` | 编译所有二进制到 `bin/`；本机无 Go 时自动使用 golang Docker 镜像 |
 | `make test` | 跑全部单测（`go test -race ./...`） |
 | `make cover` | 输出测试覆盖率 |
 | `make up` / `make down` | docker compose 起 / 停 |
@@ -176,6 +183,14 @@ make down   # 停服并清理 redis 数据
 | `WORKER_CONCURRENCY` | `4` | 单 worker 进程内 consumer 数 |
 | `WORKER_REPLICAS` | `1` | docker compose worker 副本数 |
 | `REDIS_ADDR` | `redis:6379` | 容器内地址 |
+| `SKILL_ENABLED` | `true` | 是否启用 W5 动态 Skill 加载 |
+| `SKILL_ROOT` | `skills` | 本地 skill 根目录；docker compose 默认 `/skills` |
+| `SKILL_TOP_K` | `3` | 单次 Run 最多注入几个 skill |
+| `POSTGRES_DSN` | `postgres://...` | W6 RAG 的 Postgres/pgvector DSN |
+| `RAG_ENABLED` | `false` | 是否启用 RAG RPC 与 worker 检索注入 |
+| `RAG_TOP_K` | `5` | 每次 Run/query 最多检索几个 chunk |
+| `MULTI_AGENT_ENABLED` | `false` | 是否向 LLM 暴露 `dispatch_subagent` |
+| `CONTEXT_COMPACT_ENABLED` | `true` | 是否开启 History 自动压缩 |
 
 ---
 
@@ -215,6 +230,28 @@ make down   # 停服并清理 redis 数据
 - [x] worker 复用 W3 的 `tool.Registry` + `sandbox.Driver` 做本地 tool 执行，不绕回 gateway / Redis RPC
 - [x] `internal/history.Store` 新增 `Fold(ctx, runID, fromID, toID, summary)`，把闭区间消息软删并追加一条 `compacted=true` 摘要
 - [x] 单测覆盖 OpenAI tool_call 分片、请求体 tools 字段、History Fold、Runner 文本路径 / tool loop / loop cap
+
+### W5 — Skill 索引 + Selector
+- [x] `internal/skill`：`Indexer` 扫描 `skills/**/SKILL.md`，轻量解析 frontmatter 的 `name` / `description`，记录 `sha256` / path / 完整内容
+- [x] `RuleSelector`：基于 prompt 与 skill name/description/content 的确定性关键词打分，稳定返回 Top-K
+- [x] `CachedSelector`：按规范化 query hash 做 TTL + 容量限制的本地缓存
+- [x] `agent.Runner`：每次 Run 可选注入一条动态 skill system message；无 skill、选择失败或禁用时自动退回 W4 行为
+- [x] 内置 5 个 skill：`sandbox-files` / `bash-debug` / `http-fetch` / `go-test` / `agentforge-overview`
+- [x] 单测覆盖 frontmatter、索引、重复名、缺目录、selector、cache hit、Runner skill 注入和 skill+tool loop
+
+### W6 — RAG 纵切
+- [x] `internal/rag`：chunking、确定性 hash embedder、keyword reranker、Postgres + pgvector store、RAG service
+- [x] `AgentService` 新增 `IngestRAG` / `QueryRAG`；`agentctl rag ingest/query` 可直接验收入库与检索
+- [x] docker compose 新增 `postgres` (`pgvector/pgvector:pg16`)；gateway/worker 在 `RAG_ENABLED=true` 时初始化 schema
+- [x] `agent.Runner`：Run 前按 prompt 检索 RAG chunk，并把结果作为 `<untrusted>` system context 注入；失败/空结果自动退回 W5 行为
+- [x] 单测覆盖 chunk、embedding、rerank、tenant filter、min-score 和 Runner RAG 注入；Postgres 集成测试用 `integration_pg` build tag 隔离
+
+### W7 — Multi-Agent + Context Compression
+- [x] `internal/orchestrator`：Supervisor 限制、本地 child run、pipeline DAG 解析/拓扑排序、context compact policy
+- [x] `agent.Runner`：`MULTI_AGENT_ENABLED=true` 时暴露 `dispatch_subagent`，拦截后本地执行隔离 child history，并把结构化 JSON 结果作为 tool message 返回父 Agent
+- [x] `AgentService.RunPipeline` + `agentctl pipeline run --file ...`：gateway 按 DAG 顺序复用现有 Redis agent queue 执行 step
+- [x] `ContextCompactPolicy`：超过阈值后发布 `COMPACTING` 状态，调用 `History.Fold` 折叠旧消息并保留首尾上下文
+- [x] 单测覆盖 supervisor 限制、pipeline 拓扑/校验/依赖注入、Runner subagent、Runner compaction
 
 ## 8. W2 demo 命令
 
@@ -367,15 +404,145 @@ AGENT_TOOL_MAX_STEPS=3 make up
 |------|------|------|
 | `AGENT_TOOL_MAX_STEPS` | `5` | 单次 Run 中模型/tool 循环的最大轮数，超出后返回 `tool_loop_limit` |
 
-## 11. Roadmap（参考 PROJECT_DESIGN.md §7）
+## 11. W5 demo — Skill 动态加载
+
+W5 不新增 RPC；仍然使用 `agentctl run`。区别是 worker 启动时会扫描 `skills/**/SKILL.md`，每次 Run 根据 prompt 选择少量相关 skill，把完整 `SKILL.md` 内容作为额外 system message 注入 LLM 请求。
+
+```bash
+# 1) 本地构建后，用 mock provider 验证 skill 选择链路不依赖外部 LLM
+LLM_PROVIDER=mock SKILL_ENABLED=true make up
+
+# 2) 触发 sandbox-files skill
+./bin/agentctl run --prompt "帮我列出 sandbox 文件工具怎么用"
+
+# 3) 触发 go-test skill
+./bin/agentctl run --prompt "这次 Go 代码修改应该怎么跑测试"
+```
+
+期望：CLI 仍然按原方式流式输出；worker 日志中能看到 `skill selector loaded` 和每次 Run 的 `skills loaded`。若 `SKILL_ROOT` 不存在、`SKILL_ENABLED=false` 或没有命中，worker 自动退回 W4 的 system prompt + history + tools 行为。
+
+### 关键环境变量（W5）
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `SKILL_ENABLED` | `true` | 是否启用动态 Skill 加载 |
+| `SKILL_ROOT` | `skills` | 本地 skill 根目录；docker compose 默认 `/skills` |
+| `SKILL_TOP_K` | `3` | 每次 Run 最多注入几个 skill |
+| `SKILL_CACHE_TTL` | `10m` | selector 结果缓存 TTL |
+| `SKILL_CACHE_SIZE` | `1024` | selector 结果缓存最大条目数 |
+
+## 12. W6 demo — RAG 文档检索
+
+W6 新增两个 gRPC RPC 和一个 CLI 子命令；`RunAgent` 和 ACP 不变。开启 RAG 后，worker 会在每次 Run 前根据 prompt 检索相关 chunk，并将结果包在 `<untrusted>` 中注入 LLM。
+
+```bash
+# 1) 开启 RAG 后起服
+RAG_ENABLED=true make up
+
+# 2) 本地构建 CLI 后，把 README 写入 RAG store
+make build
+./bin/agentctl rag ingest --path README.md --tenant default
+
+# 3) 单独查询 RAG
+./bin/agentctl rag query --query "W5 skill selector 怎么工作" --tenant default --top-k 5
+
+# 4) 正常 run；worker 会自动检索并注入 RAG context
+./bin/agentctl run --prompt "根据项目文档解释 W5 skill selector"
+```
+
+当前 W6 限制：默认 embedder 是确定性 hash embedding，便于无外部 key demo；PDF/docx、tree-sitter 代码解析和外部 bge reranker 留到后续增强。
+
+### 关键环境变量（W6）
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `POSTGRES_DSN` | `postgres://agentforge:agentforge@postgres:5432/agentforge?sslmode=disable` | RAG store DSN |
+| `RAG_ENABLED` | `false` | 是否启用 RAG |
+| `RAG_EMBED_DIM` | `384` | hash embedding 维度，同时决定 pgvector schema |
+| `RAG_TOP_K` | `5` | 默认返回/注入 chunk 数 |
+| `RAG_TENANT_ID` | `default` | worker Run 检索使用的 tenant |
+| `RAG_MIN_SCORE` | `0` | 最低检索分数 |
+
+## 13. W7 demo — Multi-Agent + 压缩
+
+### Supervisor subagent
+
+```bash
+MULTI_AGENT_ENABLED=true make up
+./bin/agentctl run --prompt "派一个子 Agent 总结 README，再用一句话给我结论"
+```
+
+期望：模型可调用 `dispatch_subagent`；worker 本地创建 child run，child 使用独立 history，父 run 只收到结构化 tool result。
+
+### Pipeline DAG
+
+```bash
+./bin/agentctl pipeline run --file examples/pipeline/readme-review.yaml
+```
+
+`readme-review.yaml` 包含 `summarize -> critique -> final` 三个 step，gateway 会按拓扑顺序投递到现有 worker 执行。
+
+### Context compression
+
+```bash
+CONTEXT_COMPACT_ENABLED=true CONTEXT_COMPACT_MAX_CHARS=1200 make up
+```
+
+长历史超过阈值后，worker 会发布 `COMPACTING` 状态并用 `History.Fold` 生成 `compacted=true` 摘要消息。
+
+### 关键环境变量（W7）
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `MULTI_AGENT_ENABLED` | `false` | 是否暴露 `dispatch_subagent` tool |
+| `SUBAGENT_MAX_DEPTH` | `2` | subagent 最大递归深度 |
+| `SUBAGENT_MAX_CHILDREN` | `4` | 单 parent run 最多 child 数 |
+| `SUBAGENT_TIMEOUT` | `2m` | 单个 child run 超时 |
+| `CONTEXT_COMPACT_ENABLED` | `true` | 是否启用自动压缩 |
+| `CONTEXT_COMPACT_MAX_CHARS` | `24000` | 触发压缩的可见历史字符阈值 |
+| `CONTEXT_COMPACT_KEEP_HEAD` | `4` | 压缩时保留开头消息数 |
+| `CONTEXT_COMPACT_KEEP_TAIL` | `8` | 压缩时保留末尾消息数 |
+
+## 14. W8 demo — Hook + 服务拆分 + Scheduler Pick
+
+W8 将 Skill/RAG/Hook 拆成独立 gRPC 服务：`skilld`、`ragd`、`hookd`。Gateway 的 RAG RPC 保持不变但代理到 `ragd`；worker 通过服务地址调用 Skill/RAG/Hook。Scheduler 新增 `Leader` / `Pick` RPC，用于展示 Raft-backed 调度面的接口。
+
+```bash
+# 启动服务拆分版 runtime
+HOOK_ENABLED=true RAG_ENABLED=true make up
+
+# 查看 hookd 已加载 hooks
+./bin/agentctl hook list --addr localhost:8083
+
+# 列表里会包含 rule hook 和 wazero WASI hook；示例 wasm 源码在 hooks/wasm_enterprise_safety.go
+# 重新生成示例 wasm：
+docker run --rm -v "$PWD:/src" -w /src tinygo/tinygo:0.33.0 \
+  tinygo build -target=wasi -tags tinygo_wasm_hook \
+  -o hooks/wasm_enterprise_safety.wasm hooks/wasm_enterprise_safety.go
+
+# 直接执行 PreToolUse hook，危险 bash 会被拒绝
+./bin/agentctl hook run --addr localhost:8083 \
+  --event PreToolUse \
+  --file examples/hooks/pretool_bash.json
+
+# 查询 scheduler leader
+./bin/agentctl scheduler leader --addr localhost:8081
+
+# 选择当前最低负载 worker
+./bin/agentctl scheduler pick --addr localhost:8081 --run-id demo
+```
+
+当前 W8 说明：服务拆分、Hook gRPC、wazero WASI hook、PreLLM/PreToolUse/PostToolUse 行为、etcd lease 服务注册、scheduler Raft-backed election、Pick/Leader 已落地。W8 仍不改变 Redis Stream 抢占式消费主链路；`Pick` 先作为可 demo 的调度面，后续再接 worker-specific queue shard。
+
+## 15. Roadmap（参考 PROJECT_DESIGN.md §7）
 
 | 周 | 主题 |
 |---|---|
 | W4 | ✅ LLM function-calling 闭环 + History Patch / Fold（复用 W3 tool registry） |
-| W5 | Skill 索引 + Selector |
-| W6 | RAG（pgvector + reranker） |
-| W7 | Multi-Agent 编排 + 上下文压缩 |
-| W8 | WASM Hook + Raft scheduler + etcd 服务发现 |
+| W5 | ✅ Skill 索引 + Selector |
+| W6 | ✅ RAG（pgvector + reranker） |
+| W7 | ✅ Multi-Agent 编排 + 上下文压缩 |
+| W8 | ✅ Hook 服务 + Skill/RAG/Hook 服务拆分 + Scheduler Pick/Leader |
 | W9 | OTel + Grafana + K6 压测 |
 | W10 | 文档、demo 视频、简历话术 |
 

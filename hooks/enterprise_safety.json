@@ -1,0 +1,8 @@
+{
+  "id": "enterprise-safety-from-file",
+  "event": "PreLLM",
+  "enabled": true,
+  "type": "append_system",
+  "message": "Enterprise hook manifest: before answering, identify destructive operations and prefer read-only diagnostics first.",
+  "description": "Append enterprise safety context before LLM calls."
+}

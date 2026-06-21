@@ -191,9 +191,11 @@ type memorySandbox struct {
 	drv  *MemoryDriver
 }
 
-func (s *memorySandbox) ID() string                 { return s.slot.id }
-func (s *memorySandbox) RunID() string              { return s.slot.runID }
-func (s *memorySandbox) WorkspaceHost() string      { return filepath.Join(s.slot.workspaceHost, "runs", s.slot.runID) }
+func (s *memorySandbox) ID() string    { return s.slot.id }
+func (s *memorySandbox) RunID() string { return s.slot.runID }
+func (s *memorySandbox) WorkspaceHost() string {
+	return filepath.Join(s.slot.workspaceHost, "runs", s.slot.runID)
+}
 func (s *memorySandbox) WorkspaceContainer() string { return s.WorkspaceHost() }
 
 func (s *memorySandbox) Exec(ctx context.Context, req ExecRequest) (ExecResult, error) {

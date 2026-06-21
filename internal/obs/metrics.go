@@ -13,8 +13,8 @@ type Histogram interface {
 
 type noopCounter struct{}
 
-func (noopCounter) Inc(...string)            {}
-func (noopCounter) Add(float64, ...string)   {}
+func (noopCounter) Inc(...string)          {}
+func (noopCounter) Add(float64, ...string) {}
 
 type noopHistogram struct{}
 

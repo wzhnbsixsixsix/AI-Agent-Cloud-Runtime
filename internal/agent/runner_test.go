@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -11,8 +12,11 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/wzhnbsixsixsix/agentforge/internal/history"
 	"github.com/wzhnbsixsixsix/agentforge/internal/llm"
+	"github.com/wzhnbsixsixsix/agentforge/internal/orchestrator"
 	"github.com/wzhnbsixsixsix/agentforge/internal/queue"
+	"github.com/wzhnbsixsixsix/agentforge/internal/rag"
 	"github.com/wzhnbsixsixsix/agentforge/internal/sandbox"
+	"github.com/wzhnbsixsixsix/agentforge/internal/skill"
 	"github.com/wzhnbsixsixsix/agentforge/internal/tool"
 )
 
@@ -71,6 +75,18 @@ func (fakeTool) Invoke(context.Context, sandbox.Sandbox, json.RawMessage) (tool.
 		Content:  "tool says hello",
 		Metadata: map[string]any{"exit_code": 0},
 	}, nil
+}
+
+type fakeRetriever struct {
+	results []rag.Result
+	err     error
+}
+
+func (f fakeRetriever) Retrieve(context.Context, string, string, int, float64) ([]rag.Result, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.results, nil
 }
 
 func newRunnerTest(t *testing.T, provider llm.Provider) (*Runner, history.Store, *queue.PubSub) {
@@ -171,9 +187,19 @@ func TestRunnerToolCallingLoop(t *testing.T) {
 	})
 	r.ToolRunner = &tool.Runner{Registry: reg, Driver: driver, HardTimeout: time.Second}
 	r.ToolMaxSteps = 2
+	r.SkillSelector = skill.RuleSelector{
+		Index: skill.Index{Skills: []skill.Skill{{
+			Name:        "sandbox-files",
+			Description: "sandbox file operations",
+			SHA256:      "1234567890abcdef",
+			Content:     "---\nname: sandbox-files\ndescription: sandbox file operations\n---\nUse fs_write and fs_read.",
+		}}},
+		TopK: 1,
+	}
+	r.SkillRenderer = skill.Renderer{}
 
 	events, err := collectRunEvents(t, ps, "run-tool", func(ctx context.Context) error {
-		return r.Run(ctx, queue.Task{RunID: "run-tool", Prompt: "use tool", TraceID: "trace-tool"})
+		return r.Run(ctx, queue.Task{RunID: "run-tool", Prompt: "use sandbox fs_write tool", TraceID: "trace-tool"})
 	})
 	if err != nil {
 		t.Fatalf("run: %v", err)
@@ -194,6 +220,10 @@ func TestRunnerToolCallingLoop(t *testing.T) {
 	if len(reqs[0].Tools) != 1 || reqs[0].Tools[0].Name != "fake_tool" {
 		t.Fatalf("first request missing tool defs: %+v", reqs[0].Tools)
 	}
+	if len(reqs[0].Messages) < 2 || reqs[0].Messages[1].Role != llm.RoleSystem ||
+		!strings.Contains(reqs[0].Messages[1].Content, "Use fs_write and fs_read.") {
+		t.Fatalf("first request missing skill system message: %+v", reqs[0].Messages)
+	}
 	lastMsgs := reqs[1].Messages
 	if len(lastMsgs) == 0 || lastMsgs[len(lastMsgs)-1].Role != llm.RoleTool || lastMsgs[len(lastMsgs)-1].Content != "tool says hello" {
 		t.Fatalf("second request missing tool result: %+v", lastMsgs)
@@ -204,6 +234,174 @@ func TestRunnerToolCallingLoop(t *testing.T) {
 	}
 	if len(msgs) < 4 || msgs[len(msgs)-1].Content != "final" {
 		t.Fatalf("bad history after tool loop: %+v", msgs)
+	}
+}
+
+func TestRunnerSkillInjection(t *testing.T) {
+	provider := &scriptedProvider{streams: [][]llm.TokenEvent{{
+		{Token: "ok"},
+		{Done: true, StopReason: llm.StopReasonStop},
+	}}}
+	r, _, ps := newRunnerTest(t, provider)
+	r.SkillSelector = skill.RuleSelector{
+		Index: skill.Index{Skills: []skill.Skill{{
+			Name:        "go-test",
+			Description: "go unit testing",
+			SHA256:      "abcdef1234567890",
+			Content:     "---\nname: go-test\ndescription: go unit testing\n---\nAlways prefer go test ./...",
+		}}},
+		TopK: 1,
+	}
+	r.SkillRenderer = skill.Renderer{}
+
+	_, err := collectRunEvents(t, ps, "run-skill", func(ctx context.Context) error {
+		return r.Run(ctx, queue.Task{RunID: "run-skill", Prompt: "run go test", TraceID: "trace-skill"})
+	})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	reqs := provider.reqs()
+	if len(reqs) != 1 {
+		t.Fatalf("want one LLM call, got %d", len(reqs))
+	}
+	if len(reqs[0].Messages) < 3 {
+		t.Fatalf("want system + skill + user messages, got %+v", reqs[0].Messages)
+	}
+	if reqs[0].Messages[1].Role != llm.RoleSystem ||
+		!strings.Contains(reqs[0].Messages[1].Content, "Always prefer go test ./...") {
+		t.Fatalf("missing skill injection: %+v", reqs[0].Messages)
+	}
+}
+
+func TestRunnerRAGInjection(t *testing.T) {
+	provider := &scriptedProvider{streams: [][]llm.TokenEvent{{
+		{Token: "ok"},
+		{Done: true, StopReason: llm.StopReasonStop},
+	}}}
+	r, _, ps := newRunnerTest(t, provider)
+	r.RAGRetriever = fakeRetriever{results: []rag.Result{{
+		Chunk: rag.Chunk{
+			TenantID: "default",
+			Source:   "README.md",
+			ChunkID:  "chunk-1",
+			Content:  "W6 retrieves pgvector chunks before the LLM call.",
+		},
+		Score: 0.9,
+	}}}
+	r.RAGTopK = 3
+
+	_, err := collectRunEvents(t, ps, "run-rag", func(ctx context.Context) error {
+		return r.Run(ctx, queue.Task{RunID: "run-rag", Prompt: "explain W6 pgvector", TraceID: "trace-rag"})
+	})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	reqs := provider.reqs()
+	if len(reqs) != 1 {
+		t.Fatalf("want one LLM call, got %d", len(reqs))
+	}
+	if len(reqs[0].Messages) < 3 || !strings.Contains(reqs[0].Messages[1].Content, "<untrusted") ||
+		!strings.Contains(reqs[0].Messages[1].Content, "W6 retrieves pgvector chunks") {
+		t.Fatalf("missing rag injection: %+v", reqs[0].Messages)
+	}
+}
+
+func TestRunnerDispatchSubagent(t *testing.T) {
+	provider := &scriptedProvider{streams: [][]llm.TokenEvent{
+		{
+			{ToolCalls: []llm.ToolCall{{ID: "call_sub", Type: "function", Name: "dispatch_subagent", Arguments: `{"role":"summarizer","task":"summarize README"}`}}},
+			{Done: true, StopReason: llm.StopReasonToolCalls},
+		},
+		{
+			{Token: "child summary"},
+			{Done: true, StopReason: llm.StopReasonStop},
+		},
+		{
+			{Token: "parent final"},
+			{Done: true, StopReason: llm.StopReasonStop},
+		},
+	}}
+	r, _, ps := newRunnerTest(t, provider)
+	r.MultiAgentEnabled = true
+	r.SubagentMaxDepth = 2
+	r.SubagentMaxChildren = 4
+	r.SubagentTimeout = time.Second
+	r.SubagentChildren = map[string]int{}
+
+	events, err := collectRunEvents(t, ps, "run-supervisor", func(ctx context.Context) error {
+		return r.Run(ctx, queue.Task{RunID: "run-supervisor", Prompt: "派一个子 Agent 总结 README", TraceID: "trace-supervisor"})
+	})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if events[len(events)-1].Kind != queue.EventDone {
+		t.Fatalf("want done, got %+v", events)
+	}
+	reqs := provider.reqs()
+	if len(reqs) != 3 {
+		t.Fatalf("want parent/tool child/parent final requests, got %d", len(reqs))
+	}
+	if len(reqs[0].Tools) != 1 || reqs[0].Tools[0].Name != "dispatch_subagent" {
+		t.Fatalf("dispatch tool not exposed: %+v", reqs[0].Tools)
+	}
+	if !strings.Contains(reqs[1].Messages[1].Content, "summarize README") {
+		t.Fatalf("child prompt missing task: %+v", reqs[1].Messages)
+	}
+	lastMsgs := reqs[2].Messages
+	if len(lastMsgs) == 0 || lastMsgs[len(lastMsgs)-1].Role != llm.RoleTool ||
+		!strings.Contains(lastMsgs[len(lastMsgs)-1].Content, "child summary") {
+		t.Fatalf("parent final missing child tool result: %+v", lastMsgs)
+	}
+}
+
+func TestRunnerContextCompaction(t *testing.T) {
+	provider := &scriptedProvider{streams: [][]llm.TokenEvent{{
+		{Token: "ok"},
+		{Done: true, StopReason: llm.StopReasonStop},
+	}}}
+	r, store, ps := newRunnerTest(t, provider)
+	for i := 0; i < 8; i++ {
+		if _, err := store.Append(context.Background(), "run-compact", history.Message{
+			Role:    history.RoleUser,
+			Content: strings.Repeat("history ", 30),
+		}); err != nil {
+			t.Fatalf("append history: %v", err)
+		}
+	}
+	r.CompactPolicy = orchestrator.CompactPolicy{
+		Enabled:  true,
+		MaxChars: 200,
+		KeepHead: 1,
+		KeepTail: 2,
+	}
+
+	events, err := collectRunEvents(t, ps, "run-compact", func(ctx context.Context) error {
+		return r.Run(ctx, queue.Task{RunID: "run-compact", Prompt: "new prompt", TraceID: "trace-compact"})
+	})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	seenCompacting := false
+	for _, ev := range events {
+		if ev.Kind == queue.EventState && ev.State == string(StateCompacting) {
+			seenCompacting = true
+		}
+	}
+	if !seenCompacting {
+		t.Fatalf("COMPACTING state not observed: %+v", events)
+	}
+	msgs, err := store.Render(context.Background(), "run-compact")
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	found := false
+	for _, m := range msgs {
+		if m.Tags["compacted"] == "true" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("compacted message not found: %+v", msgs)
 	}
 }
 

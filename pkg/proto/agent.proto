@@ -17,6 +17,33 @@ service AgentService {
 
   // ListTools 返回 worker 侧已注册的全部 tool 描述（含 JSON Schema）。
   rpc ListTools(ListToolsRequest) returns (ListToolsResponse);
+
+  // IngestRAG 把客户端提交的文本切片、embedding 后写入 RAG store。
+  rpc IngestRAG(IngestRAGRequest) returns (IngestRAGResponse);
+
+  // QueryRAG 查询当前 RAG store，主要用于 CLI demo 与调试。
+  rpc QueryRAG(QueryRAGRequest) returns (QueryRAGResponse);
+
+  // RunPipeline 按 W7 pipeline YAML 顺序执行多个本地 agent step。
+  rpc RunPipeline(PipelineRequest) returns (PipelineResponse);
+}
+
+// SkillService 是 W8 拆出的 Skill selector 服务。
+service SkillService {
+  rpc SelectSkills(SelectSkillsRequest) returns (SelectSkillsResponse);
+}
+
+// RAGService 是 W8 拆出的 RAG 服务；AgentService 的 RAG RPC 保持兼容并代理到这里。
+service RAGService {
+  rpc IngestRAG(IngestRAGRequest) returns (IngestRAGResponse);
+  rpc QueryRAG(QueryRAGRequest) returns (QueryRAGResponse);
+  rpc RetrieveContext(RetrieveContextRequest) returns (RetrieveContextResponse);
+}
+
+// HookService 是 W8 拆出的 Hook 执行服务。
+service HookService {
+  rpc ExecuteHook(ExecuteHookRequest) returns (ExecuteHookResponse);
+  rpc ListHooks(ListHooksRequest) returns (ListHooksResponse);
 }
 
 message RunRequest {
@@ -118,4 +145,135 @@ message ToolDescriptor {
   string description = 2;
   // OpenAI/Anthropic function-calling 兼容的 JSON Schema（Draft 7）字符串。
   string parameters_json = 3;
+}
+
+// ---------- W6: RAG ----------
+
+message IngestRAGRequest {
+  string tenant_id = 1;
+  string source = 2;
+  string content = 3;
+}
+
+message IngestRAGResponse {
+  string tenant_id = 1;
+  string source = 2;
+  uint32 chunks = 3;
+  repeated string chunk_ids = 4;
+}
+
+message QueryRAGRequest {
+  string tenant_id = 1;
+  string query = 2;
+  uint32 top_k = 3;
+  double min_score = 4;
+}
+
+message QueryRAGResponse {
+  repeated RAGChunk results = 1;
+}
+
+message RAGChunk {
+  string tenant_id = 1;
+  string source = 2;
+  string chunk_id = 3;
+  uint32 ordinal = 4;
+  string content = 5;
+  double score = 6;
+  double vector_score = 7;
+  double text_score = 8;
+}
+
+// ---------- W7: Pipeline ----------
+
+message PipelineRequest {
+  string tenant_id = 1;
+  string user_id = 2;
+  string model = 3;
+  string spec_yaml = 4;
+  string trace_id = 5;
+}
+
+message PipelineResponse {
+  string name = 1;
+  string status = 2;
+  string error = 3;
+  repeated PipelineStepResult results = 4;
+}
+
+message PipelineStepResult {
+  string step_id = 1;
+  string role = 2;
+  string child_run_id = 3;
+  string summary = 4;
+  string status = 5;
+  string error = 6;
+}
+
+// ---------- W8: Skill / RAG / Hook services ----------
+
+message SelectSkillsRequest {
+  string query = 1;
+  uint32 top_k = 2;
+}
+
+message SkillDoc {
+  string name = 1;
+  string description = 2;
+  string sha256 = 3;
+  string path = 4;
+  string content = 5;
+}
+
+message SelectSkillsResponse {
+  repeated SkillDoc skills = 1;
+}
+
+message RetrieveContextRequest {
+  string tenant_id = 1;
+  string query = 2;
+  uint32 top_k = 3;
+  double min_score = 4;
+}
+
+message RetrieveContextResponse {
+  repeated RAGChunk results = 1;
+  string rendered_context = 2;
+}
+
+enum HookEvent {
+  HOOK_EVENT_UNSPECIFIED = 0;
+  HOOK_EVENT_PRE_LLM = 1;
+  HOOK_EVENT_POST_LLM = 2;
+  HOOK_EVENT_PRE_TOOL_USE = 3;
+  HOOK_EVENT_POST_TOOL_USE = 4;
+}
+
+message ExecuteHookRequest {
+  HookEvent event = 1;
+  string run_id = 2;
+  string trace_id = 3;
+  bytes payload_json = 4;
+}
+
+message ExecuteHookResponse {
+  bool allowed = 1;
+  string reason = 2;
+  bytes payload_json = 3;
+  repeated string append_system_messages = 4;
+  repeated string matched_hooks = 5;
+}
+
+message ListHooksRequest {}
+
+message HookInfo {
+  string id = 1;
+  HookEvent event = 2;
+  bool enabled = 3;
+  string source = 4;
+  string description = 5;
+}
+
+message ListHooksResponse {
+  repeated HookInfo hooks = 1;
 }

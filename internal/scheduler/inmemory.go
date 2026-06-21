@@ -3,6 +3,8 @@ package scheduler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"sort"
 	"time"
 
 	redisstore "github.com/wzhnbsixsixsix/agentforge/internal/storage/redis"
@@ -56,7 +58,26 @@ func (s *RedisScheduler) Heartbeat(ctx context.Context, workerID string, inFligh
 }
 
 func (s *RedisScheduler) Pick(ctx context.Context, runID string) (string, error) {
-	return "", ErrNotImplemented
+	ws, err := s.List(ctx)
+	if err != nil {
+		return "", err
+	}
+	if len(ws) == 0 {
+		return "", fmt.Errorf("scheduler: no live workers")
+	}
+	sort.Slice(ws, func(i, j int) bool {
+		if ws[i].Load != ws[j].Load {
+			return ws[i].Load < ws[j].Load
+		}
+		if ws[i].InFlight != ws[j].InFlight {
+			return ws[i].InFlight < ws[j].InFlight
+		}
+		if ws[i].Concurrency != ws[j].Concurrency {
+			return ws[i].Concurrency > ws[j].Concurrency
+		}
+		return ws[i].WorkerID < ws[j].WorkerID
+	})
+	return ws[0].WorkerID, nil
 }
 
 func (s *RedisScheduler) List(ctx context.Context) ([]WorkerInfo, error) {

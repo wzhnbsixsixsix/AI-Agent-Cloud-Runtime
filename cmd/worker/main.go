@@ -12,11 +12,16 @@ import (
 
 	"github.com/wzhnbsixsixsix/agentforge/internal/agent"
 	"github.com/wzhnbsixsixsix/agentforge/internal/config"
+	"github.com/wzhnbsixsixsix/agentforge/internal/discovery"
 	"github.com/wzhnbsixsixsix/agentforge/internal/history"
+	"github.com/wzhnbsixsixsix/agentforge/internal/hook"
 	"github.com/wzhnbsixsixsix/agentforge/internal/llm"
 	"github.com/wzhnbsixsixsix/agentforge/internal/obs"
+	"github.com/wzhnbsixsixsix/agentforge/internal/orchestrator"
 	"github.com/wzhnbsixsixsix/agentforge/internal/queue"
+	"github.com/wzhnbsixsixsix/agentforge/internal/rag"
 	"github.com/wzhnbsixsixsix/agentforge/internal/sandbox"
+	agentskill "github.com/wzhnbsixsixsix/agentforge/internal/skill"
 	redisstore "github.com/wzhnbsixsixsix/agentforge/internal/storage/redis"
 	"github.com/wzhnbsixsixsix/agentforge/internal/tool"
 
@@ -44,6 +49,21 @@ func main() {
 
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if cfg.DiscoveryEnabled {
+		reg, err := discovery.Register(rootCtx, cfg.EtcdEndpoints, discovery.Instance{
+			Service: "worker",
+			ID:      workerID,
+			Addr:    workerID,
+			Metadata: map[string]string{
+				"concurrency": fmt.Sprintf("%d", cfg.Concurrency),
+			},
+		}, 10)
+		if err != nil {
+			logger.Error("discovery register", "err", err)
+		} else {
+			defer reg.Close()
+		}
+	}
 
 	rdb, err := redisstore.New(rootCtx, redisstore.Options{
 		Addr: cfg.RedisAddr, Password: cfg.RedisPassword, DB: cfg.RedisDB,
@@ -100,6 +120,62 @@ func main() {
 	runner := agent.NewRunner(store, provider, pubsub)
 	runner.ToolRunner = tRunner
 	runner.ToolMaxSteps = cfg.AgentToolMaxSteps
+	runner.MultiAgentEnabled = cfg.MultiAgentEnabled
+	runner.SubagentMaxDepth = cfg.SubagentMaxDepth
+	runner.SubagentMaxChildren = cfg.SubagentMaxChildren
+	runner.SubagentTimeout = cfg.SubagentTimeout
+	runner.SubagentChildren = map[string]int{}
+	runner.CompactPolicy = orchestrator.CompactPolicy{
+		Enabled:  cfg.ContextCompactEnabled,
+		MaxChars: cfg.ContextCompactMaxChars,
+		KeepHead: cfg.ContextCompactKeepHead,
+		KeepTail: cfg.ContextCompactKeepTail,
+	}
+	var serviceConns []*grpc.ClientConn
+	if cfg.SkillEnabled {
+		conn, err := dialService(rootCtx, cfg.SkillServiceAddr)
+		if err != nil {
+			logger.Warn("skill service disabled", "addr", cfg.SkillServiceAddr, "err", err)
+		} else {
+			serviceConns = append(serviceConns, conn)
+			runner.SkillSelector = &agentskill.CachedSelector{
+				Next:     agentskill.GRPCSelector{Client: pb.NewSkillServiceClient(conn), TopK: cfg.SkillTopK},
+				TTL:      cfg.SkillCacheTTL,
+				Capacity: cfg.SkillCacheSize,
+			}
+			runner.SkillRenderer = agentskill.Renderer{}
+			logger.Info("skill service selector enabled", "addr", cfg.SkillServiceAddr, "top_k", cfg.SkillTopK)
+		}
+	}
+	if cfg.RAGEnabled {
+		conn, err := dialService(rootCtx, cfg.RAGServiceAddr)
+		if err != nil {
+			logger.Warn("rag service disabled", "addr", cfg.RAGServiceAddr, "err", err)
+		} else {
+			serviceConns = append(serviceConns, conn)
+			runner.RAGRetriever = rag.GRPCRetriever{Client: pb.NewRAGServiceClient(conn)}
+			runner.RAGTenantID = cfg.RAGTenantID
+			runner.RAGTopK = cfg.RAGTopK
+			runner.RAGMinScore = cfg.RAGMinScore
+			logger.Info("rag retriever service enabled", "addr", cfg.RAGServiceAddr, "tenant", cfg.RAGTenantID, "top_k", cfg.RAGTopK)
+		}
+	}
+	if cfg.HookEnabled {
+		conn, err := dialService(rootCtx, cfg.HookServiceAddr)
+		if err != nil {
+			logger.Warn("hook service disabled", "addr", cfg.HookServiceAddr, "err", err)
+		} else {
+			serviceConns = append(serviceConns, conn)
+			hc := hook.GRPCClient{Client: pb.NewHookServiceClient(conn)}
+			runner.HookClient = hc
+			runner.HookFailClosed = cfg.HookFailClosed
+			if tRunner != nil {
+				tRunner.HookClient = hc
+				tRunner.HookFailClosed = cfg.HookFailClosed
+			}
+			logger.Info("hook service enabled", "addr", cfg.HookServiceAddr)
+		}
+	}
 
 	var wg sync.WaitGroup
 
@@ -165,6 +241,15 @@ func main() {
 		_ = driver.Close(closeCtx)
 		cancel()
 	}
+	for _, conn := range serviceConns {
+		_ = conn.Close()
+	}
+}
+
+func dialService(ctx context.Context, addr string) (*grpc.ClientConn, error) {
+	dialCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	return grpc.DialContext(dialCtx, addr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
 }
 
 // makeSandboxDriver 按 cfg.SandboxDriver 选择 driver 实现。
@@ -208,6 +293,7 @@ func runScheduler(ctx context.Context, logger *slog.Logger, cfg *config.Worker, 
 
 	if _, err := cli.Register(ctx, &pb.RegisterRequest{
 		WorkerId:    workerID,
+		Addr:        workerID,
 		Concurrency: int32(cfg.Concurrency),
 	}); err != nil {
 		logger.Warn("register failed", "err", err)

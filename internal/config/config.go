@@ -16,6 +16,35 @@ type Common struct {
 	RedisAddr     string `env:"REDIS_ADDR"     envDefault:"redis:6379"`
 	RedisPassword string `env:"REDIS_PASSWORD"`
 	RedisDB       int    `env:"REDIS_DB"       envDefault:"0"`
+
+	PostgresDSN string  `env:"POSTGRES_DSN"`
+	RAGEnabled  bool    `env:"RAG_ENABLED" envDefault:"false"`
+	RAGEmbedDim int     `env:"RAG_EMBED_DIM" envDefault:"384"`
+	RAGTopK     int     `env:"RAG_TOP_K" envDefault:"5"`
+	RAGTenantID string  `env:"RAG_TENANT_ID" envDefault:"default"`
+	RAGMinScore float64 `env:"RAG_MIN_SCORE" envDefault:"0"`
+
+	MultiAgentEnabled   bool          `env:"MULTI_AGENT_ENABLED" envDefault:"false"`
+	SubagentMaxDepth    int           `env:"SUBAGENT_MAX_DEPTH" envDefault:"2"`
+	SubagentMaxChildren int           `env:"SUBAGENT_MAX_CHILDREN" envDefault:"4"`
+	SubagentTimeout     time.Duration `env:"SUBAGENT_TIMEOUT" envDefault:"2m"`
+
+	ContextCompactEnabled  bool `env:"CONTEXT_COMPACT_ENABLED" envDefault:"true"`
+	ContextCompactMaxChars int  `env:"CONTEXT_COMPACT_MAX_CHARS" envDefault:"24000"`
+	ContextCompactKeepHead int  `env:"CONTEXT_COMPACT_KEEP_HEAD" envDefault:"4"`
+	ContextCompactKeepTail int  `env:"CONTEXT_COMPACT_KEEP_TAIL" envDefault:"8"`
+
+	DiscoveryEnabled bool     `env:"DISCOVERY_ENABLED" envDefault:"false"`
+	EtcdEndpoints    []string `env:"ETCD_ENDPOINTS" envSeparator:"," envDefault:"etcd:2379"`
+
+	SkillServiceAddr   string        `env:"SKILL_SERVICE_ADDR" envDefault:"skilld:8084"`
+	RAGServiceAddr     string        `env:"RAG_SERVICE_ADDR" envDefault:"ragd:8085"`
+	HookServiceAddr    string        `env:"HOOK_SERVICE_ADDR" envDefault:"hookd:8083"`
+	HookEnabled        bool          `env:"HOOK_ENABLED" envDefault:"false"`
+	HookRoot           string        `env:"HOOK_ROOT" envDefault:"hooks"`
+	HookFailClosed     bool          `env:"HOOK_FAIL_CLOSED" envDefault:"false"`
+	HookMaxStdoutBytes int           `env:"HOOK_MAX_STDOUT_BYTES" envDefault:"65536"`
+	HookTimeout        time.Duration `env:"HOOK_TIMEOUT" envDefault:"10ms"`
 }
 
 // Gateway 配置。
@@ -36,8 +65,11 @@ type Gateway struct {
 // Scheduler 配置。
 type Scheduler struct {
 	Common
-	GRPCAddr string `env:"SCHEDULER_GRPC_ADDR" envDefault:":8081"`
-	HTTPAddr string `env:"SCHEDULER_HTTP_ADDR" envDefault:":8082"`
+	GRPCAddr      string `env:"SCHEDULER_GRPC_ADDR" envDefault:":8081"`
+	HTTPAddr      string `env:"SCHEDULER_HTTP_ADDR" envDefault:":8082"`
+	NodeID        string `env:"SCHEDULER_NODE_ID" envDefault:"scheduler-1"`
+	AdvertiseAddr string `env:"SCHEDULER_ADVERTISE_ADDR" envDefault:"scheduler:8081"`
+	RaftEnabled   bool   `env:"SCHEDULER_RAFT_ENABLED" envDefault:"false"`
 }
 
 // Worker 配置。
@@ -49,22 +81,22 @@ type Worker struct {
 	MaxRetry          int           `env:"WORKER_MAX_RETRY"         envDefault:"3"`
 	SchedulerDial     string        `env:"SCHEDULER_DIAL_ADDR"      envDefault:"scheduler:8081"`
 
-	LLMProvider     string        `env:"LLM_PROVIDER"            envDefault:"openai"`
-	OpenAIBaseURL   string        `env:"OPENAI_BASE_URL"         envDefault:"https://api.openai.com/v1"`
-	OpenAIAPIKey    string        `env:"OPENAI_API_KEY"`
-	OpenAIModel     string        `env:"OPENAI_MODEL"            envDefault:"gpt-4o-mini"`
-	OpenAITimeout   time.Duration `env:"OPENAI_TIMEOUT_SECONDS"  envDefault:"60s"`
+	LLMProvider   string        `env:"LLM_PROVIDER"            envDefault:"openai"`
+	OpenAIBaseURL string        `env:"OPENAI_BASE_URL"         envDefault:"https://api.openai.com/v1"`
+	OpenAIAPIKey  string        `env:"OPENAI_API_KEY"`
+	OpenAIModel   string        `env:"OPENAI_MODEL"            envDefault:"gpt-4o-mini"`
+	OpenAITimeout time.Duration `env:"OPENAI_TIMEOUT_SECONDS"  envDefault:"60s"`
 
 	// ---- W3: Sandbox + Tool ----
 	// SandboxDriver: docker | memory | disabled。disabled 表示不启动 tool consumer。
-	SandboxDriver        string        `env:"SANDBOX_DRIVER"          envDefault:"docker"`
-	SandboxImage         string        `env:"SANDBOX_IMAGE"           envDefault:"alpine:3.19"`
-	SandboxPoolSize      int           `env:"SANDBOX_POOL_SIZE"       envDefault:"4"`
-	SandboxWorkspaceRoot string        `env:"SANDBOX_WORKSPACE_ROOT"  envDefault:"/tmp/agentforge"`
-	SandboxMemoryMB      int64         `env:"SANDBOX_MEMORY_MB"       envDefault:"256"`
-	SandboxCPUQuotaUS    int64         `env:"SANDBOX_CPU_QUOTA_US"    envDefault:"50000"`
-	SandboxPidsLimit     int64         `env:"SANDBOX_PIDS_LIMIT"      envDefault:"256"`
-	SandboxExecHard      time.Duration `env:"SANDBOX_EXEC_HARD"       envDefault:"60s"`
+	SandboxDriver         string        `env:"SANDBOX_DRIVER"          envDefault:"docker"`
+	SandboxImage          string        `env:"SANDBOX_IMAGE"           envDefault:"alpine:3.19"`
+	SandboxPoolSize       int           `env:"SANDBOX_POOL_SIZE"       envDefault:"4"`
+	SandboxWorkspaceRoot  string        `env:"SANDBOX_WORKSPACE_ROOT"  envDefault:"/tmp/agentforge"`
+	SandboxMemoryMB       int64         `env:"SANDBOX_MEMORY_MB"       envDefault:"256"`
+	SandboxCPUQuotaUS     int64         `env:"SANDBOX_CPU_QUOTA_US"    envDefault:"50000"`
+	SandboxPidsLimit      int64         `env:"SANDBOX_PIDS_LIMIT"      envDefault:"256"`
+	SandboxExecHard       time.Duration `env:"SANDBOX_EXEC_HARD"       envDefault:"60s"`
 	SandboxAcquireTimeout time.Duration `env:"SANDBOX_ACQUIRE_TIMEOUT" envDefault:"30s"`
 
 	ToolConsumerGroup string   `env:"TOOL_CONSUMER_GROUP"  envDefault:"tool-runtime"`
@@ -72,6 +104,13 @@ type Worker struct {
 	ToolHTTPMaxBytes  int64    `env:"TOOL_HTTP_MAX_BYTES"  envDefault:"1048576"`
 	ToolHTTPAllowList []string `env:"TOOL_HTTP_ALLOW_LIST" envSeparator:","`
 	AgentToolMaxSteps int      `env:"AGENT_TOOL_MAX_STEPS" envDefault:"5"`
+
+	// ---- W5: Skill dynamic loading ----
+	SkillEnabled   bool          `env:"SKILL_ENABLED"    envDefault:"true"`
+	SkillRoot      string        `env:"SKILL_ROOT"       envDefault:"skills"`
+	SkillTopK      int           `env:"SKILL_TOP_K"      envDefault:"3"`
+	SkillCacheTTL  time.Duration `env:"SKILL_CACHE_TTL"  envDefault:"10m"`
+	SkillCacheSize int           `env:"SKILL_CACHE_SIZE" envDefault:"1024"`
 }
 
 // AgentCtl CLI 配置。
@@ -79,8 +118,27 @@ type AgentCtl struct {
 	Common
 	GatewayDial    string `env:"GATEWAY_DIAL_ADDR"     envDefault:"localhost:8080"`
 	GatewayACPDial string `env:"GATEWAY_ACP_DIAL_ADDR" envDefault:"localhost:8090"`
+	SchedulerDial  string `env:"SCHEDULER_DIAL_ADDR"   envDefault:"localhost:8081"`
 	// Proto 默认使用的协议: grpc | acp
 	Proto string `env:"AGENTCTL_PROTO" envDefault:"grpc"`
+}
+
+type Hook struct {
+	Common
+	HookGRPCAddr string `env:"HOOK_GRPC_ADDR" envDefault:":8083"`
+}
+
+type Skill struct {
+	Common
+	SkillGRPCAddr string `env:"SKILL_GRPC_ADDR" envDefault:":8084"`
+	SkillEnabled  bool   `env:"SKILL_ENABLED" envDefault:"true"`
+	SkillRoot     string `env:"SKILL_ROOT" envDefault:"skills"`
+	SkillTopK     int    `env:"SKILL_TOP_K" envDefault:"3"`
+}
+
+type RAG struct {
+	Common
+	RAGGRPCAddr string `env:"RAG_GRPC_ADDR" envDefault:":8085"`
 }
 
 // LoadGateway 读取 Gateway 配置；缺失必填项 panic。
@@ -121,6 +179,30 @@ func LoadAgentCtl() (*AgentCtl, error) {
 	c := &AgentCtl{}
 	if err := env.Parse(c); err != nil {
 		return nil, fmt.Errorf("parse agentctl env: %w", err)
+	}
+	return c, nil
+}
+
+func LoadHook() (*Hook, error) {
+	c := &Hook{}
+	if err := env.Parse(c); err != nil {
+		return nil, fmt.Errorf("parse hook env: %w", err)
+	}
+	return c, nil
+}
+
+func LoadSkill() (*Skill, error) {
+	c := &Skill{}
+	if err := env.Parse(c); err != nil {
+		return nil, fmt.Errorf("parse skill env: %w", err)
+	}
+	return c, nil
+}
+
+func LoadRAG() (*RAG, error) {
+	c := &RAG{}
+	if err := env.Parse(c); err != nil {
+		return nil, fmt.Errorf("parse rag env: %w", err)
 	}
 	return c, nil
 }

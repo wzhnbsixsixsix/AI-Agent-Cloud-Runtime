@@ -8,10 +8,10 @@ var Keys = struct {
 	HistoryOrder      func(runID string) string
 	QueueTasks        string
 	QueueTasksDLQ     string
-	QueueToolTasks    string                       // W3
-	QueueToolTasksDLQ string                       // W3
-	EventsTopic       func(runID string) string    // run 事件
-	ToolResultsTopic  func(callID string) string   // W3：tool 调用结果
+	QueueToolTasks    string                     // W3
+	QueueToolTasksDLQ string                     // W3
+	EventsTopic       func(runID string) string  // run 事件
+	ToolResultsTopic  func(callID string) string // W3：tool 调用结果
 	WorkerKey         func(workerID string) string
 	WorkerSet         string
 }{

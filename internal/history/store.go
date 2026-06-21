@@ -16,7 +16,7 @@ const (
 
 // Message 是历史里的最小单元。
 type Message struct {
-	ID       string            `json:"id"`        // ULID
+	ID       string            `json:"id"` // ULID
 	Role     Role              `json:"role"`
 	Content  string            `json:"content"`
 	Visible  bool              `json:"visible"`

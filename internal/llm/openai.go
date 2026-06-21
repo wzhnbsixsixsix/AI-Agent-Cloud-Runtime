@@ -40,12 +40,12 @@ func NewOpenAI(baseURL, apiKey, model string, timeout time.Duration) *OpenAIProv
 func (p *OpenAIProvider) Name() string { return "openai" }
 
 type openaiChatReq struct {
-	Model       string             `json:"model"`
-	Messages    []openaiMessage    `json:"messages"`
-	Tools       []openaiToolDef    `json:"tools,omitempty"`
-	Stream      bool               `json:"stream"`
-	Temperature float32            `json:"temperature,omitempty"`
-	MaxTokens   int                `json:"max_tokens,omitempty"`
+	Model       string          `json:"model"`
+	Messages    []openaiMessage `json:"messages"`
+	Tools       []openaiToolDef `json:"tools,omitempty"`
+	Stream      bool            `json:"stream"`
+	Temperature float32         `json:"temperature,omitempty"`
+	MaxTokens   int             `json:"max_tokens,omitempty"`
 }
 
 type openaiMessage struct {

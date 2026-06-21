@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/wzhnbsixsixsix/agentforge/internal/config"
+	"github.com/wzhnbsixsixsix/agentforge/internal/discovery"
 	"github.com/wzhnbsixsixsix/agentforge/internal/obs"
 	sched "github.com/wzhnbsixsixsix/agentforge/internal/scheduler"
 	redisstore "github.com/wzhnbsixsixsix/agentforge/internal/storage/redis"
@@ -42,10 +43,39 @@ func main() {
 	defer rdb.Close()
 
 	rs := sched.NewRedis(rdb)
+	var reg *discovery.Registration
+	if cfg.DiscoveryEnabled {
+		reg, err = discovery.Register(rootCtx, cfg.EtcdEndpoints, discovery.Instance{
+			Service: "scheduler",
+			ID:      cfg.NodeID,
+			Addr:    cfg.AdvertiseAddr,
+		}, 10)
+		if err != nil {
+			logger.Error("discovery register", "err", err)
+		} else {
+			defer reg.Close()
+		}
+	}
+	var elector *discovery.Elector
+	if cfg.RaftEnabled && cfg.DiscoveryEnabled {
+		elector, err = discovery.StartSchedulerElection(rootCtx, cfg.EtcdEndpoints, cfg.NodeID, cfg.AdvertiseAddr, 3)
+		if err != nil {
+			logger.Error("scheduler election", "err", err)
+		} else {
+			defer elector.Close()
+			logger.Info("scheduler election started", "node_id", cfg.NodeID, "key", "/agentforge/scheduler/leader")
+		}
+	}
 
 	// gRPC
 	grpcSrv := grpc.NewServer()
-	pb.RegisterSchedulerServiceServer(grpcSrv, &schedulerService{s: rs})
+	pb.RegisterSchedulerServiceServer(grpcSrv, &schedulerService{
+		s:           rs,
+		nodeID:      cfg.NodeID,
+		advertise:   cfg.AdvertiseAddr,
+		raftEnabled: cfg.RaftEnabled,
+		elector:     elector,
+	})
 	lis, err := net.Listen("tcp", cfg.GRPCAddr)
 	if err != nil {
 		logger.Error("listen grpc", "err", err)
@@ -71,6 +101,23 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(ws)
+	})
+	mux.HandleFunc("/leader", func(w http.ResponseWriter, r *http.Request) {
+		leader := discovery.LeaderInfo{ID: cfg.NodeID, Addr: cfg.AdvertiseAddr}
+		isLeader := true
+		if elector != nil {
+			if info, ok := elector.Leader(r.Context()); ok {
+				leader = info
+			}
+			isLeader = elector.IsLeader()
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"leader_id":   leader.ID,
+			"leader_addr": leader.Addr,
+			"is_leader":   isLeader,
+			"raft_mode":   cfg.RaftEnabled,
+		})
 	})
 	httpSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,

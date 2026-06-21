@@ -5,9 +5,11 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/wzhnbsixsixsix/agentforge/internal/obs"
+	"github.com/wzhnbsixsixsix/agentforge/internal/orchestrator"
 	"github.com/wzhnbsixsixsix/agentforge/internal/queue"
 
 	pb "github.com/wzhnbsixsixsix/agentforge/pkg/proto/gen"
@@ -17,8 +19,9 @@ import (
 )
 
 // agentService 实现 pb.AgentServiceServer：
-//   收到客户端第一条 RunRequest -> 生成 run_id+trace_id -> XADD 到任务队列 ->
-//   订阅 events:{run_id} -> 把事件转换成 RunEvent 流回客户端 -> 看到 DONE/ERROR 关流。
+//
+//	收到客户端第一条 RunRequest -> 生成 run_id+trace_id -> XADD 到任务队列 ->
+//	订阅 events:{run_id} -> 把事件转换成 RunEvent 流回客户端 -> 看到 DONE/ERROR 关流。
 //
 // W3 起额外承载 ExecTool / ListTools，业务委托给 toolHandler。
 type agentService struct {
@@ -28,6 +31,7 @@ type agentService struct {
 	log        *slog.Logger
 	runTimeout time.Duration
 	tool       *toolHandler // nil 表示未启用 W3 tool（如 sandbox 不可用）
+	rag        *ragHandler
 }
 
 // ExecTool gRPC 入口；委托给 toolHandler。
@@ -44,6 +48,86 @@ func (s *agentService) ListTools(ctx context.Context, req *pb.ListToolsRequest) 
 		return &pb.ListToolsResponse{}, nil
 	}
 	return s.tool.listTools(ctx, req)
+}
+
+// IngestRAG gRPC 入口；委托给 ragHandler。
+func (s *agentService) IngestRAG(ctx context.Context, req *pb.IngestRAGRequest) (*pb.IngestRAGResponse, error) {
+	if s.rag == nil {
+		return nil, status.Error(codes.Unavailable, "rag service disabled on this gateway")
+	}
+	return s.rag.ingest(ctx, req)
+}
+
+// QueryRAG gRPC 入口；委托给 ragHandler。
+func (s *agentService) QueryRAG(ctx context.Context, req *pb.QueryRAGRequest) (*pb.QueryRAGResponse, error) {
+	if s.rag == nil {
+		return nil, status.Error(codes.Unavailable, "rag service disabled on this gateway")
+	}
+	return s.rag.query(ctx, req)
+}
+
+// RunPipeline executes a W7 pipeline through the existing agent queue.
+func (s *agentService) RunPipeline(ctx context.Context, req *pb.PipelineRequest) (*pb.PipelineResponse, error) {
+	if strings.TrimSpace(req.GetSpecYaml()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "empty pipeline spec")
+	}
+	p, err := orchestrator.ParsePipeline(req.GetSpecYaml())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "parse pipeline: %v", err)
+	}
+	ordered, err := orchestrator.TopologicalOrder(p)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "order pipeline: %v", err)
+	}
+	traceID := req.GetTraceId()
+	if traceID == "" {
+		traceID = obs.NewTraceID()
+	}
+	userID := req.GetUserId()
+	if userID == "" {
+		userID = "pipeline"
+	}
+	summaries := map[string]string{}
+	resp := &pb.PipelineResponse{Name: p.Name, Status: "ok"}
+	for _, st := range ordered {
+		prompt := st.Task
+		if st.Role != "" {
+			prompt = "You are a pipeline subagent with role: " + st.Role + ".\n\nTask:\n" + prompt
+		}
+		if len(st.DependsOn) > 0 {
+			var b strings.Builder
+			b.WriteString(prompt)
+			b.WriteString("\n\nDependency outputs:\n")
+			for _, dep := range st.DependsOn {
+				b.WriteString("- ")
+				b.WriteString(dep)
+				b.WriteString(": ")
+				b.WriteString(summaries[dep])
+				b.WriteByte('\n')
+			}
+			prompt = b.String()
+		}
+		runID := obs.NewRunID()
+		summary, err := s.runPipelineStep(ctx, runID, traceID, userID, req.GetModel(), prompt)
+		step := &pb.PipelineStepResult{
+			StepId:     st.ID,
+			Role:       st.Role,
+			ChildRunId: runID,
+			Summary:    summary,
+			Status:     "ok",
+		}
+		if err != nil {
+			step.Status = "error"
+			step.Error = err.Error()
+			resp.Status = "error"
+			resp.Error = err.Error()
+			resp.Results = append(resp.Results, step)
+			return resp, nil
+		}
+		summaries[st.ID] = summary
+		resp.Results = append(resp.Results, step)
+	}
+	return resp, nil
 }
 
 func (s *agentService) RunAgent(stream pb.AgentService_RunAgentServer) error {
@@ -148,6 +232,50 @@ func mapEvent(runID, traceID string, ev queue.Event) *pb.RunEvent {
 		return nil
 	}
 	return base
+}
+
+func (s *agentService) runPipelineStep(ctx context.Context, runID, traceID, userID, model, prompt string) (string, error) {
+	subCtx, subCancel := context.WithCancel(ctx)
+	defer subCancel()
+	evCh, evCancel, err := s.ps.Subscribe(subCtx, runID)
+	if err != nil {
+		return "", err
+	}
+	defer evCancel()
+	if _, err := s.q.Publish(ctx, queue.Task{
+		RunID:   runID,
+		UserID:  userID,
+		Prompt:  prompt,
+		Model:   model,
+		TraceID: traceID,
+	}); err != nil {
+		return "", err
+	}
+	timeout := s.runTimeout
+	if timeout <= 0 {
+		timeout = 10 * time.Minute
+	}
+	hard, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	var b strings.Builder
+	for {
+		select {
+		case <-hard.Done():
+			return b.String(), hard.Err()
+		case ev, ok := <-evCh:
+			if !ok {
+				return b.String(), nil
+			}
+			switch ev.Kind {
+			case queue.EventToken:
+				b.WriteString(ev.Text)
+			case queue.EventDone:
+				return b.String(), nil
+			case queue.EventError:
+				return b.String(), errors.New(ev.Code + ": " + ev.Message)
+			}
+		}
+	}
 }
 
 func stateEnum(s string) pb.RunState {

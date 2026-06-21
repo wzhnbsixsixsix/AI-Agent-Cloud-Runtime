@@ -15,7 +15,6 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
@@ -166,7 +165,7 @@ func ensureImage(ctx context.Context, cli *client.Client, ref string, log *slog.
 		return nil
 	}
 	log.Info("pulling sandbox image", "image", ref)
-	rc, err := cli.ImagePull(ctx, ref, image.PullOptions{})
+	rc, err := cli.ImagePull(ctx, ref, types.ImagePullOptions{})
 	if err != nil {
 		return fmt.Errorf("image pull: %w", err)
 	}
@@ -227,8 +226,8 @@ func (d *DockerDriver) spawnSlot(ctx context.Context) (*warmSlot, error) {
 		_ = os.RemoveAll(hostWorkspace)
 		return nil, fmt.Errorf("container create: %w", err)
 	}
-	if err := d.cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
-		_ = d.cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
+	if err := d.cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
+		_ = d.cli.ContainerRemove(ctx, resp.ID, types.ContainerRemoveOptions{Force: true})
 		_ = os.RemoveAll(hostWorkspace)
 		return nil, fmt.Errorf("container start: %w", err)
 	}
@@ -298,7 +297,7 @@ func (d *DockerDriver) Release(_ context.Context, sb Sandbox) error {
 func (d *DockerDriver) destroyAndRefill(slot *warmSlot) {
 	rmCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	if err := d.cli.ContainerRemove(rmCtx, slot.containerID, container.RemoveOptions{
+	if err := d.cli.ContainerRemove(rmCtx, slot.containerID, types.ContainerRemoveOptions{
 		Force: true, RemoveVolumes: true,
 	}); err != nil {
 		d.log.Warn("container remove", "id", slot.containerID, "err", err)
@@ -321,7 +320,7 @@ func (d *DockerDriver) destroyAndRefill(slot *warmSlot) {
 	select {
 	case d.pool <- ns:
 	case <-d.closing:
-		_ = d.cli.ContainerRemove(context.Background(), ns.containerID, container.RemoveOptions{Force: true})
+		_ = d.cli.ContainerRemove(context.Background(), ns.containerID, types.ContainerRemoveOptions{Force: true})
 		_ = os.RemoveAll(ns.workspaceHost)
 	}
 }
@@ -350,7 +349,7 @@ drainLoop:
 		select {
 		case slot := <-d.pool:
 			rmCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			_ = d.cli.ContainerRemove(rmCtx, slot.containerID, container.RemoveOptions{Force: true})
+			_ = d.cli.ContainerRemove(rmCtx, slot.containerID, types.ContainerRemoveOptions{Force: true})
 			cancel()
 			_ = os.RemoveAll(slot.workspaceHost)
 		default:
@@ -379,9 +378,11 @@ type dockerSandbox struct {
 	drv  *DockerDriver
 }
 
-func (s *dockerSandbox) ID() string                 { return s.slot.containerID }
-func (s *dockerSandbox) RunID() string              { return s.slot.runID }
-func (s *dockerSandbox) WorkspaceHost() string      { return filepath.Join(s.slot.workspaceHost, "runs", s.slot.runID) }
+func (s *dockerSandbox) ID() string    { return s.slot.containerID }
+func (s *dockerSandbox) RunID() string { return s.slot.runID }
+func (s *dockerSandbox) WorkspaceHost() string {
+	return filepath.Join(s.slot.workspaceHost, "runs", s.slot.runID)
+}
 func (s *dockerSandbox) WorkspaceContainer() string { return "/workspace/runs/" + s.slot.runID }
 
 func (s *dockerSandbox) Exec(ctx context.Context, req ExecRequest) (ExecResult, error) {

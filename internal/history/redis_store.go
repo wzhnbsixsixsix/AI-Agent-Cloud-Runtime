@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	redisstore "github.com/wzhnbsixsixsix/agentforge/internal/storage/redis"
 	"github.com/wzhnbsixsixsix/agentforge/internal/obs"
+	redisstore "github.com/wzhnbsixsixsix/agentforge/internal/storage/redis"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -16,8 +16,9 @@ import (
 var ErrNotFound = errors.New("history: message not found")
 
 // RedisStore 用 Hash 存内容、ZSet（score=1） + lex 排序存顺序。
-//   key history:{run_id}:msgs   Hash field=msg_id value=json(Message)
-//   key history:{run_id}:order  ZSet member=msg_id score=0（按 lex 排序，ULID 已是字典序时间序）
+//
+//	key history:{run_id}:msgs   Hash field=msg_id value=json(Message)
+//	key history:{run_id}:order  ZSet member=msg_id score=0（按 lex 排序，ULID 已是字典序时间序）
 type RedisStore struct {
 	cli *redis.Client
 }

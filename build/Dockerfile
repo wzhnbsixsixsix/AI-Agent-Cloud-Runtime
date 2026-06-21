@@ -32,5 +32,7 @@ RUN go build -trimpath -ldflags='-s -w' -o /out/app ./cmd/${BIN}
 # ---------------- runtime ----------------
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=builder /out/app /app
+COPY --from=builder /src/skills /skills
+COPY --from=builder /src/hooks /hooks
 USER nonroot:nonroot
 ENTRYPOINT ["/app"]

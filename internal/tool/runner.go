@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/wzhnbsixsixsix/agentforge/internal/hook"
 	"github.com/wzhnbsixsixsix/agentforge/internal/queue"
 	"github.com/wzhnbsixsixsix/agentforge/internal/sandbox"
 )
@@ -29,7 +30,9 @@ type Runner struct {
 
 	// HardTimeout 任意一次 tool 调用的兜底超时（保护 sandbox 池不被卡住）。
 	// 0 → 60s。Task 自带的 TimeoutMS 与之取较小。
-	HardTimeout time.Duration
+	HardTimeout    time.Duration
+	HookClient     hook.Client
+	HookFailClosed bool
 }
 
 // Handle 是 queue.ToolHandler 兼容的回调。返回 nil 即 ack。
@@ -112,10 +115,30 @@ func (r *Runner) Execute(ctx context.Context, callID, traceID, toolName string, 
 	if len(argsJSON) == 0 {
 		argsJSON = []byte("{}")
 	}
+	argsJSON, denied, reason, err := r.executePreToolHook(tCtx, callID, traceID, toolName, argsJSON)
+	if err != nil {
+		return queue.ToolResultEvent{}, err
+	}
+	if denied {
+		return queue.ToolResultEvent{
+			CallID:    callID,
+			TraceID:   traceID,
+			IsError:   true,
+			Content:   reason,
+			ErrorCode: "hook_denied",
+			ErrorMsg:  reason,
+			ElapsedMS: time.Since(start).Milliseconds(),
+		}, nil
+	}
 	res, err := tool.Invoke(tCtx, sb, argsJSON)
 	if err != nil {
 		log.Warn("tool invoke internal error", "err", err)
 		return queue.ToolResultEvent{}, err
+	}
+	if patched, ok, err := r.executePostToolHook(tCtx, callID, traceID, toolName, res); err != nil {
+		return queue.ToolResultEvent{}, err
+	} else if ok {
+		res = patched
 	}
 
 	// 序列化 metadata
@@ -142,6 +165,82 @@ func (r *Runner) Execute(ctx context.Context, callID, traceID, toolName string, 
 		MetaJSON:    metaJSON,
 		ElapsedMS:   time.Since(start).Milliseconds(),
 	}, nil
+}
+
+func (r *Runner) executePreToolHook(ctx context.Context, callID, traceID, toolName string, argsJSON []byte) ([]byte, bool, string, error) {
+	if r.HookClient == nil {
+		return argsJSON, false, "", nil
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"call_id":   callID,
+		"tool":      toolName,
+		"args_json": json.RawMessage(argsJSON),
+	})
+	resp, err := r.HookClient.Execute(ctx, hook.Request{
+		Event:       hook.EventPreToolUse,
+		TraceID:     traceID,
+		PayloadJSON: payload,
+	})
+	if err != nil {
+		if r.HookFailClosed {
+			return nil, false, "", err
+		}
+		return argsJSON, false, "", nil
+	}
+	if !resp.Allowed {
+		return argsJSON, true, resp.Reason, nil
+	}
+	if len(resp.PayloadJSON) == 0 {
+		return argsJSON, false, "", nil
+	}
+	var patched struct {
+		ArgsJSON json.RawMessage `json:"args_json"`
+	}
+	if err := json.Unmarshal(resp.PayloadJSON, &patched); err == nil && len(patched.ArgsJSON) > 0 {
+		return patched.ArgsJSON, false, "", nil
+	}
+	return argsJSON, false, "", nil
+}
+
+func (r *Runner) executePostToolHook(ctx context.Context, callID, traceID, toolName string, res Result) (Result, bool, error) {
+	if r.HookClient == nil {
+		return res, false, nil
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"call_id":  callID,
+		"tool":     toolName,
+		"content":  res.Content,
+		"is_error": res.IsError,
+		"metadata": res.Metadata,
+	})
+	resp, err := r.HookClient.Execute(ctx, hook.Request{
+		Event:       hook.EventPostToolUse,
+		TraceID:     traceID,
+		PayloadJSON: payload,
+	})
+	if err != nil {
+		if r.HookFailClosed {
+			return res, false, err
+		}
+		return res, false, nil
+	}
+	if len(resp.PayloadJSON) == 0 {
+		return res, false, nil
+	}
+	var patched struct {
+		Content  string         `json:"content"`
+		IsError  bool           `json:"is_error"`
+		Metadata map[string]any `json:"metadata"`
+	}
+	if err := json.Unmarshal(resp.PayloadJSON, &patched); err != nil {
+		return res, false, nil
+	}
+	res.Content = patched.Content
+	res.IsError = patched.IsError
+	if patched.Metadata != nil {
+		res.Metadata = patched.Metadata
+	}
+	return res, true, nil
 }
 
 func (r *Runner) publishError(ctx context.Context, t queue.ToolTask, code, msg string, start time.Time) error {

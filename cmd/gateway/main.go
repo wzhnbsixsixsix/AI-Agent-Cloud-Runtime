@@ -12,6 +12,7 @@ import (
 
 	internalacp "github.com/wzhnbsixsixsix/agentforge/internal/acp"
 	"github.com/wzhnbsixsixsix/agentforge/internal/config"
+	"github.com/wzhnbsixsixsix/agentforge/internal/discovery"
 	"github.com/wzhnbsixsixsix/agentforge/internal/obs"
 	"github.com/wzhnbsixsixsix/agentforge/internal/queue"
 	redisstore "github.com/wzhnbsixsixsix/agentforge/internal/storage/redis"
@@ -34,6 +35,18 @@ func main() {
 
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if cfg.DiscoveryEnabled {
+		reg, err := discovery.Register(rootCtx, cfg.EtcdEndpoints, discovery.Instance{
+			Service: "gateway",
+			ID:      hostnameID("gateway"),
+			Addr:    cfg.GRPCAddr,
+		}, 10)
+		if err != nil {
+			logger.Error("discovery register", "err", err)
+		} else {
+			defer reg.Close()
+		}
+	}
 
 	rdb, err := redisstore.New(rootCtx, redisstore.Options{
 		Addr: cfg.RedisAddr, Password: cfg.RedisPassword, DB: cfg.RedisDB,
@@ -69,6 +82,18 @@ func main() {
 		timeout:  cfg.ToolCallTimeout,
 	}
 
+	var rHandler *ragHandler
+	if cfg.RAGEnabled {
+		h, err := newRAGHandler(rootCtx, cfg.RAGServiceAddr)
+		if err != nil {
+			logger.Warn("rag service disabled", "err", err)
+		} else {
+			rHandler = h
+			defer rHandler.close()
+			logger.Info("rag service proxy enabled", "addr", cfg.RAGServiceAddr)
+		}
+	}
+
 	// ---- gRPC server ----
 	srv := grpc.NewServer()
 	svc := &agentService{
@@ -77,6 +102,7 @@ func main() {
 		log:        logger,
 		runTimeout: cfg.RunTimeout,
 		tool:       tHandler,
+		rag:        rHandler,
 	}
 	pb.RegisterAgentServiceServer(srv, svc)
 	healthSvc := health.NewServer()
@@ -138,4 +164,12 @@ func main() {
 		srv.Stop()
 	}
 	wg.Wait()
+}
+
+func hostnameID(prefix string) string {
+	name, err := os.Hostname()
+	if err != nil || name == "" {
+		return prefix
+	}
+	return prefix + "-" + name
 }

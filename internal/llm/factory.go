@@ -8,7 +8,7 @@ import (
 
 // FactoryConfig 构造 Provider 所需的所有配置。
 type FactoryConfig struct {
-	Provider      string        // openai | mock
+	Provider      string // openai | mock
 	OpenAIBaseURL string
 	OpenAIAPIKey  string
 	OpenAIModel   string

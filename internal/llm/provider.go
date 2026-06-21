@@ -60,10 +60,11 @@ const (
 )
 
 // TokenEvent 流式输出的一帧。
-//   Token 非空 -> 一个增量 token（或一段）
-//   ToolCalls 非空 -> 模型请求调用 tool
-//   Done=true -> 结束信号
-//   Err 非空  -> 终止错误
+//
+//	Token 非空 -> 一个增量 token（或一段）
+//	ToolCalls 非空 -> 模型请求调用 tool
+//	Done=true -> 结束信号
+//	Err 非空  -> 终止错误
 type TokenEvent struct {
 	Token      string
 	ToolCalls  []ToolCall

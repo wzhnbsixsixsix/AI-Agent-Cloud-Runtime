@@ -19,9 +19,10 @@ import (
 // toolHandler 处理 ExecTool / ListTools 两个 RPC。
 //
 // 流程（ExecTool）：
-//   gateway 收到 RPC -> 生成 call_id -> 订阅 tool_results:{call_id} ->
-//   XADD ToolTask 到 queue:tool_tasks -> 等待第一条 ToolResultEvent ->
-//   组装 ExecToolResponse 返回。
+//
+//	gateway 收到 RPC -> 生成 call_id -> 订阅 tool_results:{call_id} ->
+//	XADD ToolTask 到 queue:tool_tasks -> 等待第一条 ToolResultEvent ->
+//	组装 ExecToolResponse 返回。
 type toolHandler struct {
 	q        *queue.ToolStreamQueue
 	bus      *queue.ToolBus

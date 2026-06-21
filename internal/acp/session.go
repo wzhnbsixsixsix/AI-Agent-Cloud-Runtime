@@ -22,13 +22,13 @@ import (
 //   - serve: 主循环；负责 HELLO -> RUN -> EVENT 流 -> CLOSE
 //   - 写帧统一走 sendCh + writer goroutine，避免业务 goroutine 与心跳并发写 conn。
 type session struct {
-	conn   net.Conn
-	cfg    ServerConfig
-	log    *slog.Logger
-	disp   Dispatcher
-	cache  *EventCache
-	idGen  IDGenerator
-	br     *bufio.Reader
+	conn  net.Conn
+	cfg   ServerConfig
+	log   *slog.Logger
+	disp  Dispatcher
+	cache *EventCache
+	idGen IDGenerator
+	br    *bufio.Reader
 
 	sendCh   chan acp.Frame
 	sendDone chan struct{}

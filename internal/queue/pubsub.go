@@ -27,9 +27,9 @@ type Event struct {
 	// 联合字段，按 Kind 取
 	State   string `json:"state,omitempty"`
 	From    string `json:"from,omitempty"`
-	Text    string `json:"text,omitempty"`   // token
-	Index   int64  `json:"index,omitempty"`  // token index
-	Code    string `json:"code,omitempty"`   // error code
+	Text    string `json:"text,omitempty"`  // token
+	Index   int64  `json:"index,omitempty"` // token index
+	Code    string `json:"code,omitempty"`  // error code
 	Message string `json:"message,omitempty"`
 	Total   int64  `json:"total,omitempty"`
 }

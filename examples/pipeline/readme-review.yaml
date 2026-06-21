@@ -1,0 +1,13 @@
+name: readme-review
+steps:
+  - id: summarize
+    role: summarizer
+    task: Summarize the AgentForge README and focus on implemented W1-W7 capabilities.
+  - id: critique
+    role: reviewer
+    task: Review the summary and point out the strongest system design talking points.
+    depends_on: [summarize]
+  - id: final
+    role: presenter
+    task: Produce a concise interview-ready explanation from the previous outputs.
+    depends_on: [summarize, critique]

@@ -9,6 +9,8 @@ service SchedulerService {
   rpc Register(RegisterRequest) returns (RegisterResponse);
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
   rpc Health(HealthRequest) returns (HealthResponse);
+  rpc Pick(PickRequest) returns (PickResponse);
+  rpc Leader(LeaderRequest) returns (LeaderResponse);
 }
 
 message RegisterRequest {
@@ -38,4 +40,25 @@ message HealthRequest {}
 message HealthResponse {
   string status = 1;
   int64  ts_unix_ms = 2;
+}
+
+message PickRequest {
+  string run_id = 1;
+}
+
+message PickResponse {
+  string worker_id = 1;
+  string addr = 2;
+  bool is_leader = 3;
+  string leader_id = 4;
+  string leader_addr = 5;
+  string reason = 6;
+}
+
+message LeaderRequest {}
+
+message LeaderResponse {
+  string leader_id = 1;
+  string leader_addr = 2;
+  bool is_leader = 3;
 }

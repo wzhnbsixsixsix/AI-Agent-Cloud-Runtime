@@ -1,0 +1,7 @@
+{
+  "call_id": "demo-call",
+  "tool": "bash",
+  "args_json": {
+    "command": "rm -rf /"
+  }
+}

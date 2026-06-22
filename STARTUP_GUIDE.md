@@ -945,3 +945,95 @@ docker run --rm -v "$PWD:/src" -w /src tinygo/tinygo:0.33.0 \
   tinygo build -target=wasi -tags tinygo_wasm_hook \
   -o hooks/wasm_enterprise_safety.wasm hooks/wasm_enterprise_safety.go
 ```
+
+---
+
+## 16. W9 可观测和压测怎么启动
+
+W9 增加了三类东西：
+
+- OpenTelemetry：把一次 Run 里的 gateway、worker、tool、hook、rag、scheduler 操作串成 trace。
+- Prometheus：定时抓每个服务的 `/metrics`。
+- Grafana：展示 AgentForge dashboard。
+
+### 16.1 `.env` 应该长什么样
+
+项目根目录 `.env` 必须是 Docker/Go 能读的 dotenv 格式，也就是：
+
+```dotenv
+KEY=value
+```
+
+如果你之前把 Codex/TOML 配置放到了这个文件里，当前实现会把它备份到：
+
+```bash
+.env.codex.backup
+```
+
+WEEX 的 key 可以这样配：
+
+```dotenv
+LLM_PROVIDER=openai
+OPENAI_BASE_URL=<weex-compatible-url>
+OPENAI_API_KEY=
+WEEX_API_KEY=你的 key
+OPENAI_MODEL=你的模型
+```
+
+规则是：`OPENAI_API_KEY` 为空但 `WEEX_API_KEY` 不为空时，worker 自动使用 `WEEX_API_KEY`。
+
+### 16.2 启动可观测栈
+
+```bash
+make obs-config
+LLM_PROVIDER=mock HOOK_ENABLED=true RAG_ENABLED=false make up
+```
+
+打开：
+
+- Grafana: http://localhost:3000
+- Prometheus: http://localhost:9090
+- OTel Collector OTLP gRPC: `localhost:4317`
+
+Grafana 默认账号密码：
+
+```text
+admin / admin
+```
+
+进入 Grafana 后，在 `AgentForge / AgentForge W9 Runtime` dashboard 查看：
+
+- Run 成功率和 p95 延迟
+- token/s
+- tool 和 hook 延迟
+- worker 数量和 sandbox pool
+
+### 16.3 跑 mock 压测
+
+W9 的基准压测默认使用 mock LLM，避免真实模型限流、价格和网络抖动污染结果。
+
+```bash
+make bench-run
+```
+
+可调参数：
+
+```bash
+BENCH_TOTAL=500 BENCH_CONCURRENCY=32 make bench-run
+```
+
+压测后，把结果填到：
+
+```bash
+docs/W9_BENCH_REPORT.md
+```
+
+### 16.4 真实 WEEX 冒烟测试
+
+真实 key 不建议用于基准压测，但可以做一次链路冒烟：
+
+```bash
+LLM_PROVIDER=openai ./bin/agentctl run --prompt "用一句话介绍 AgentForge"
+```
+
+如果看到 `[DONE] run_id=... trace_id=...`，说明真实 OpenAI-compatible 链路可用。

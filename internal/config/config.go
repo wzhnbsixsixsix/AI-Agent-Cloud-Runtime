@@ -45,6 +45,13 @@ type Common struct {
 	HookFailClosed     bool          `env:"HOOK_FAIL_CLOSED" envDefault:"false"`
 	HookMaxStdoutBytes int           `env:"HOOK_MAX_STDOUT_BYTES" envDefault:"65536"`
 	HookTimeout        time.Duration `env:"HOOK_TIMEOUT" envDefault:"10ms"`
+
+	OTELEnabled              bool   `env:"OTEL_ENABLED" envDefault:"true"`
+	OTELServiceName          string `env:"OTEL_SERVICE_NAME"`
+	OTELExporterOTLPEndpoint string `env:"OTEL_EXPORTER_OTLP_ENDPOINT" envDefault:"otel-collector:4317"`
+	MetricsEnabled           bool   `env:"METRICS_ENABLED" envDefault:"true"`
+	MetricsAddr              string `env:"METRICS_ADDR" envDefault:":9090"`
+	MetricsPath              string `env:"METRICS_PATH" envDefault:"/metrics"`
 }
 
 // Gateway 配置。
@@ -84,6 +91,7 @@ type Worker struct {
 	LLMProvider   string        `env:"LLM_PROVIDER"            envDefault:"openai"`
 	OpenAIBaseURL string        `env:"OPENAI_BASE_URL"         envDefault:"https://api.openai.com/v1"`
 	OpenAIAPIKey  string        `env:"OPENAI_API_KEY"`
+	WEEXAPIKey    string        `env:"WEEX_API_KEY"`
 	OpenAIModel   string        `env:"OPENAI_MODEL"            envDefault:"gpt-4o-mini"`
 	OpenAITimeout time.Duration `env:"OPENAI_TIMEOUT_SECONDS"  envDefault:"60s"`
 
@@ -165,8 +173,11 @@ func LoadWorker() (*Worker, error) {
 	if err := env.Parse(c); err != nil {
 		return nil, fmt.Errorf("parse worker env: %w", err)
 	}
+	if c.OpenAIAPIKey == "" && c.WEEXAPIKey != "" {
+		c.OpenAIAPIKey = c.WEEXAPIKey
+	}
 	if c.LLMProvider == "openai" && c.OpenAIAPIKey == "" {
-		return nil, fmt.Errorf("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
+		return nil, fmt.Errorf("OPENAI_API_KEY or WEEX_API_KEY is required when LLM_PROVIDER=openai")
 	}
 	if c.Concurrency <= 0 {
 		c.Concurrency = 1

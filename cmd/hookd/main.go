@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/wzhnbsixsixsix/agentforge/internal/config"
 	"github.com/wzhnbsixsixsix/agentforge/internal/discovery"
@@ -42,6 +43,23 @@ func main() {
 	pb.RegisterHookServiceServer(srv, &hookService{engine: engine, log: logger})
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	telemetry, err := obs.InitTelemetry(rootCtx, obs.TelemetryConfig{
+		ServiceName:        cfg.OTELServiceName,
+		DefaultServiceName: "hookd",
+		OTELEnabled:        cfg.OTELEnabled,
+		OTLPEndpoint:       cfg.OTELExporterOTLPEndpoint,
+		MetricsEnabled:     cfg.MetricsEnabled,
+		MetricsAddr:        cfg.MetricsAddr,
+		MetricsPath:        cfg.MetricsPath,
+	}, logger)
+	if err != nil {
+		logger.Warn("telemetry init", "err", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = telemetry.Shutdown(shutdownCtx)
+		cancel()
+	}()
 	if cfg.DiscoveryEnabled {
 		reg, err := discovery.Register(rootCtx, cfg.EtcdEndpoints, discovery.Instance{
 			Service: "hookd",

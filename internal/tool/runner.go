@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/wzhnbsixsixsix/agentforge/internal/hook"
+	"github.com/wzhnbsixsixsix/agentforge/internal/obs"
 	"github.com/wzhnbsixsixsix/agentforge/internal/queue"
 	"github.com/wzhnbsixsixsix/agentforge/internal/sandbox"
 )
@@ -61,6 +62,12 @@ func (r *Runner) Handle(ctx context.Context, d queue.ToolDelivery) error {
 
 // Execute 直接执行一次 tool，供 queue consumer 与 agent function-calling loop 复用。
 func (r *Runner) Execute(ctx context.Context, callID, traceID, toolName string, argsJSON []byte, timeoutMS int) (queue.ToolResultEvent, error) {
+	ctx = obs.WithTraceID(ctx, traceID)
+	ctx, span := obs.StartSpan(ctx, "tool.execute", obs.Attr("tool.name", toolName))
+	var execErr error
+	defer func() {
+		obs.EndSpan(span, execErr)
+	}()
 	log := slog.Default()
 	if r.Log != nil {
 		log = r.Log.With("call_id", callID, "tool", toolName, "trace", traceID)
@@ -69,13 +76,19 @@ func (r *Runner) Execute(ctx context.Context, callID, traceID, toolName string, 
 
 	// 取 tool 描述
 	if r.Registry == nil {
-		return queue.ToolResultEvent{}, errors.New("tool registry is nil")
+		execErr = errors.New("tool registry is nil")
+		obs.ToolTotal.WithLabelValues(obs.ServiceName(), toolName, "error").Inc()
+		return queue.ToolResultEvent{}, execErr
 	}
 	if r.Driver == nil {
-		return queue.ToolResultEvent{}, errors.New("sandbox driver is nil")
+		execErr = errors.New("sandbox driver is nil")
+		obs.ToolTotal.WithLabelValues(obs.ServiceName(), toolName, "error").Inc()
+		return queue.ToolResultEvent{}, execErr
 	}
 	tool, ok := r.Registry.Get(toolName)
 	if !ok {
+		obs.ToolTotal.WithLabelValues(obs.ServiceName(), toolName, "error").Inc()
+		obs.ToolDuration.WithLabelValues(obs.ServiceName(), toolName, "error").Observe(time.Since(start).Seconds())
 		return queue.ToolResultEvent{
 			CallID:    callID,
 			TraceID:   traceID,
@@ -103,10 +116,19 @@ func (r *Runner) Execute(ctx context.Context, callID, traceID, toolName string, 
 
 	// Acquire sandbox（即使是 http_fetch 也走一遍，保持调用接口一致；
 	// http_fetch 不会用到 sandbox.Exec 但拿到 workspace 仍有意义）。
+	acquireStart := time.Now()
 	sb, err := r.Driver.Acquire(tCtx, callID)
 	if err != nil {
+		execErr = err
+		obs.SandboxAcquireDuration.WithLabelValues(obs.ServiceName(), "error").Observe(time.Since(acquireStart).Seconds())
+		obs.ToolTotal.WithLabelValues(obs.ServiceName(), toolName, "error").Inc()
+		obs.ToolDuration.WithLabelValues(obs.ServiceName(), toolName, "error").Observe(time.Since(start).Seconds())
 		return queue.ToolResultEvent{}, err
 	}
+	obs.SandboxAcquireDuration.WithLabelValues(obs.ServiceName(), "ok").Observe(time.Since(acquireStart).Seconds())
+	stats := r.Driver.Stats()
+	obs.SandboxPoolReady.WithLabelValues(obs.ServiceName(), "docker").Set(float64(stats.PoolReady))
+	obs.SandboxInFlight.WithLabelValues(obs.ServiceName(), "docker").Set(float64(stats.InFlight))
 	defer func() {
 		// Release 用 background ctx；上层 ctx 取消不影响销毁
 		_ = r.Driver.Release(context.Background(), sb)
@@ -117,9 +139,14 @@ func (r *Runner) Execute(ctx context.Context, callID, traceID, toolName string, 
 	}
 	argsJSON, denied, reason, err := r.executePreToolHook(tCtx, callID, traceID, toolName, argsJSON)
 	if err != nil {
+		execErr = err
+		obs.ToolTotal.WithLabelValues(obs.ServiceName(), toolName, "error").Inc()
+		obs.ToolDuration.WithLabelValues(obs.ServiceName(), toolName, "error").Observe(time.Since(start).Seconds())
 		return queue.ToolResultEvent{}, err
 	}
 	if denied {
+		obs.ToolTotal.WithLabelValues(obs.ServiceName(), toolName, "denied").Inc()
+		obs.ToolDuration.WithLabelValues(obs.ServiceName(), toolName, "denied").Observe(time.Since(start).Seconds())
 		return queue.ToolResultEvent{
 			CallID:    callID,
 			TraceID:   traceID,
@@ -133,9 +160,15 @@ func (r *Runner) Execute(ctx context.Context, callID, traceID, toolName string, 
 	res, err := tool.Invoke(tCtx, sb, argsJSON)
 	if err != nil {
 		log.Warn("tool invoke internal error", "err", err)
+		execErr = err
+		obs.ToolTotal.WithLabelValues(obs.ServiceName(), toolName, "error").Inc()
+		obs.ToolDuration.WithLabelValues(obs.ServiceName(), toolName, "error").Observe(time.Since(start).Seconds())
 		return queue.ToolResultEvent{}, err
 	}
 	if patched, ok, err := r.executePostToolHook(tCtx, callID, traceID, toolName, res); err != nil {
+		execErr = err
+		obs.ToolTotal.WithLabelValues(obs.ServiceName(), toolName, "error").Inc()
+		obs.ToolDuration.WithLabelValues(obs.ServiceName(), toolName, "error").Observe(time.Since(start).Seconds())
 		return queue.ToolResultEvent{}, err
 	} else if ok {
 		res = patched
@@ -155,6 +188,12 @@ func (r *Runner) Execute(ctx context.Context, callID, traceID, toolName string, 
 		exit = v
 	}
 
+	status := "ok"
+	if res.IsError {
+		status = "error"
+	}
+	obs.ToolTotal.WithLabelValues(obs.ServiceName(), toolName, status).Inc()
+	obs.ToolDuration.WithLabelValues(obs.ServiceName(), toolName, status).Observe(time.Since(start).Seconds())
 	return queue.ToolResultEvent{
 		CallID:      callID,
 		TraceID:     traceID,
@@ -171,6 +210,18 @@ func (r *Runner) executePreToolHook(ctx context.Context, callID, traceID, toolNa
 	if r.HookClient == nil {
 		return argsJSON, false, "", nil
 	}
+	start := time.Now()
+	ctx, span := obs.StartSpan(ctx, "hook.pre_tool", obs.Attr("hook.event", string(hook.EventPreToolUse)), obs.Attr("tool.name", toolName))
+	var hookErr error
+	defer func() {
+		status := "ok"
+		if hookErr != nil {
+			status = "error"
+		}
+		obs.HookTotal.WithLabelValues(obs.ServiceName(), string(hook.EventPreToolUse), status).Inc()
+		obs.HookDuration.WithLabelValues(obs.ServiceName(), string(hook.EventPreToolUse), status).Observe(time.Since(start).Seconds())
+		obs.EndSpan(span, hookErr)
+	}()
 	payload, _ := json.Marshal(map[string]any{
 		"call_id":   callID,
 		"tool":      toolName,
@@ -183,11 +234,13 @@ func (r *Runner) executePreToolHook(ctx context.Context, callID, traceID, toolNa
 	})
 	if err != nil {
 		if r.HookFailClosed {
+			hookErr = err
 			return nil, false, "", err
 		}
 		return argsJSON, false, "", nil
 	}
 	if !resp.Allowed {
+		obs.HookTotal.WithLabelValues(obs.ServiceName(), string(hook.EventPreToolUse), "denied").Inc()
 		return argsJSON, true, resp.Reason, nil
 	}
 	if len(resp.PayloadJSON) == 0 {
@@ -206,6 +259,18 @@ func (r *Runner) executePostToolHook(ctx context.Context, callID, traceID, toolN
 	if r.HookClient == nil {
 		return res, false, nil
 	}
+	start := time.Now()
+	ctx, span := obs.StartSpan(ctx, "hook.post_tool", obs.Attr("hook.event", string(hook.EventPostToolUse)), obs.Attr("tool.name", toolName))
+	var hookErr error
+	defer func() {
+		status := "ok"
+		if hookErr != nil {
+			status = "error"
+		}
+		obs.HookTotal.WithLabelValues(obs.ServiceName(), string(hook.EventPostToolUse), status).Inc()
+		obs.HookDuration.WithLabelValues(obs.ServiceName(), string(hook.EventPostToolUse), status).Observe(time.Since(start).Seconds())
+		obs.EndSpan(span, hookErr)
+	}()
 	payload, _ := json.Marshal(map[string]any{
 		"call_id":  callID,
 		"tool":     toolName,
@@ -220,6 +285,7 @@ func (r *Runner) executePostToolHook(ctx context.Context, callID, traceID, toolN
 	})
 	if err != nil {
 		if r.HookFailClosed {
+			hookErr = err
 			return res, false, err
 		}
 		return res, false, nil

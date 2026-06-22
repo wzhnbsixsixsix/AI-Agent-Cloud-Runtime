@@ -6,6 +6,7 @@
 
 # Env
 .env
+.env.codex.backup
 .env.local
 *.local
 

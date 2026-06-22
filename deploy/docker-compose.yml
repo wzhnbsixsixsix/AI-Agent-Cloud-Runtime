@@ -1,5 +1,12 @@
 name: agentforge
 
+x-observability-env: &observability-env
+  OTEL_ENABLED: ${OTEL_ENABLED:-true}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-otel-collector:4317}
+  METRICS_ENABLED: ${METRICS_ENABLED:-true}
+  METRICS_ADDR: ${METRICS_ADDR:-:9090}
+  METRICS_PATH: ${METRICS_PATH:-/metrics}
+
 services:
   redis:
     image: redis:7-alpine
@@ -42,6 +49,46 @@ services:
       - "2379:2379"
     restart: unless-stopped
 
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.104.0
+    container_name: agentforge-otel-collector
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8889:8889"
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: agentforge-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-lifecycle
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: agentforge-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
   skilld:
     build:
       context: ..
@@ -50,6 +97,8 @@ services:
         BIN: skilld
     container_name: agentforge-skilld
     environment:
+      <<: *observability-env
+      OTEL_SERVICE_NAME: skilld
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FORMAT: ${LOG_FORMAT:-json}
       SKILL_GRPC_ADDR: ":8084"
@@ -72,6 +121,8 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      <<: *observability-env
+      OTEL_SERVICE_NAME: ragd
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FORMAT: ${LOG_FORMAT:-json}
       POSTGRES_DSN: ${POSTGRES_DSN:-postgres://agentforge:agentforge@postgres:5432/agentforge?sslmode=disable}
@@ -91,6 +142,8 @@ services:
         BIN: hookd
     container_name: agentforge-hookd
     environment:
+      <<: *observability-env
+      OTEL_SERVICE_NAME: hookd
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FORMAT: ${LOG_FORMAT:-json}
       HOOK_GRPC_ADDR: ":8083"
@@ -119,6 +172,8 @@ services:
       ragd:
         condition: service_started
     environment:
+      <<: *observability-env
+      OTEL_SERVICE_NAME: gateway
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FORMAT: ${LOG_FORMAT:-json}
       REDIS_ADDR: redis:6379
@@ -156,6 +211,8 @@ services:
       redis:
         condition: service_healthy
     environment:
+      <<: *observability-env
+      OTEL_SERVICE_NAME: scheduler
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FORMAT: ${LOG_FORMAT:-json}
       REDIS_ADDR: redis:6379
@@ -193,6 +250,8 @@ services:
       hookd:
         condition: service_started
     environment:
+      <<: *observability-env
+      OTEL_SERVICE_NAME: worker
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FORMAT: ${LOG_FORMAT:-json}
       REDIS_ADDR: redis:6379
@@ -228,6 +287,7 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      WEEX_API_KEY: ${WEEX_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       OPENAI_TIMEOUT_SECONDS: ${OPENAI_TIMEOUT_SECONDS:-60s}
       # ---- W3: Sandbox + Tool ----

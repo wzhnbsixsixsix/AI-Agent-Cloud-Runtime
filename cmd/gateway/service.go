@@ -35,7 +35,9 @@ type agentService struct {
 }
 
 // ExecTool gRPC 入口；委托给 toolHandler。
-func (s *agentService) ExecTool(ctx context.Context, req *pb.ExecToolRequest) (*pb.ExecToolResponse, error) {
+func (s *agentService) ExecTool(ctx context.Context, req *pb.ExecToolRequest) (resp *pb.ExecToolResponse, err error) {
+	ctx, span := obs.StartSpan(ctx, "gateway.exec_tool", obs.Attr("tool.name", req.GetTool()))
+	defer func() { obs.EndSpan(span, err) }()
 	if s.tool == nil {
 		return nil, status.Error(codes.Unavailable, "tool service disabled on this gateway")
 	}
@@ -51,7 +53,9 @@ func (s *agentService) ListTools(ctx context.Context, req *pb.ListToolsRequest) 
 }
 
 // IngestRAG gRPC 入口；委托给 ragHandler。
-func (s *agentService) IngestRAG(ctx context.Context, req *pb.IngestRAGRequest) (*pb.IngestRAGResponse, error) {
+func (s *agentService) IngestRAG(ctx context.Context, req *pb.IngestRAGRequest) (resp *pb.IngestRAGResponse, err error) {
+	ctx, span := obs.StartSpan(ctx, "gateway.rag_ingest", obs.Attr("rag.tenant_id", req.GetTenantId()), obs.Attr("rag.source", req.GetSource()))
+	defer func() { obs.EndSpan(span, err) }()
 	if s.rag == nil {
 		return nil, status.Error(codes.Unavailable, "rag service disabled on this gateway")
 	}
@@ -59,7 +63,9 @@ func (s *agentService) IngestRAG(ctx context.Context, req *pb.IngestRAGRequest) 
 }
 
 // QueryRAG gRPC 入口；委托给 ragHandler。
-func (s *agentService) QueryRAG(ctx context.Context, req *pb.QueryRAGRequest) (*pb.QueryRAGResponse, error) {
+func (s *agentService) QueryRAG(ctx context.Context, req *pb.QueryRAGRequest) (resp *pb.QueryRAGResponse, err error) {
+	ctx, span := obs.StartSpan(ctx, "gateway.rag_query", obs.Attr("rag.tenant_id", req.GetTenantId()))
+	defer func() { obs.EndSpan(span, err) }()
 	if s.rag == nil {
 		return nil, status.Error(codes.Unavailable, "rag service disabled on this gateway")
 	}
@@ -67,7 +73,9 @@ func (s *agentService) QueryRAG(ctx context.Context, req *pb.QueryRAGRequest) (*
 }
 
 // RunPipeline executes a W7 pipeline through the existing agent queue.
-func (s *agentService) RunPipeline(ctx context.Context, req *pb.PipelineRequest) (*pb.PipelineResponse, error) {
+func (s *agentService) RunPipeline(ctx context.Context, req *pb.PipelineRequest) (resp *pb.PipelineResponse, err error) {
+	ctx, span := obs.StartSpan(ctx, "gateway.run_pipeline", obs.Attr("tenant_id", req.GetTenantId()), obs.Attr("agentforge.user_id", req.GetUserId()))
+	defer func() { obs.EndSpan(span, err) }()
 	if strings.TrimSpace(req.GetSpecYaml()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "empty pipeline spec")
 	}
@@ -88,7 +96,7 @@ func (s *agentService) RunPipeline(ctx context.Context, req *pb.PipelineRequest)
 		userID = "pipeline"
 	}
 	summaries := map[string]string{}
-	resp := &pb.PipelineResponse{Name: p.Name, Status: "ok"}
+	resp = &pb.PipelineResponse{Name: p.Name, Status: "ok"}
 	for _, st := range ordered {
 		prompt := st.Task
 		if st.Role != "" {
@@ -130,7 +138,7 @@ func (s *agentService) RunPipeline(ctx context.Context, req *pb.PipelineRequest)
 	return resp, nil
 }
 
-func (s *agentService) RunAgent(stream pb.AgentService_RunAgentServer) error {
+func (s *agentService) RunAgent(stream pb.AgentService_RunAgentServer) (runErr error) {
 	ctx := stream.Context()
 	// W1 阶段只取第一条作为整轮的 prompt，简化客户端实现。
 	first, err := stream.Recv()
@@ -153,6 +161,11 @@ func (s *agentService) RunAgent(stream pb.AgentService_RunAgentServer) error {
 		traceID = obs.NewTraceID()
 	}
 	ctx = obs.WithRunID(obs.WithTraceID(ctx, traceID), runID)
+	ctx, span := obs.StartSpan(ctx, "gateway.run_agent",
+		obs.Attr("agentforge.user_id", first.GetUserId()),
+		obs.Attr("llm.model", first.GetModel()),
+	)
+	defer func() { obs.EndSpan(span, runErr) }()
 	log := obs.LoggerFromContext(ctx)
 
 	// 先订阅事件，再投递任务，避免投递后第一时间事件丢失

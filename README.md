@@ -534,7 +534,40 @@ docker run --rm -v "$PWD:/src" -w /src tinygo/tinygo:0.33.0 \
 
 当前 W8 说明：服务拆分、Hook gRPC、wazero WASI hook、PreLLM/PreToolUse/PostToolUse 行为、etcd lease 服务注册、scheduler Raft-backed election、Pick/Leader 已落地。W8 仍不改变 Redis Stream 抢占式消费主链路；`Pick` 先作为可 demo 的调度面，后续再接 worker-specific queue shard。
 
-## 15. Roadmap（参考 PROJECT_DESIGN.md §7）
+## 15. W9 demo — Observability + Bench
+
+W9 接入 OpenTelemetry、Prometheus 和 Grafana。每个服务都会暴露 `/metrics`，Prometheus 默认抓取 gateway、worker、scheduler、skilld、ragd、hookd，Grafana 会自动加载 AgentForge dashboard。
+
+```bash
+# 项目 .env 使用 Docker/Go dotenv 格式；原 Codex/TOML 配置已备份到 .env.codex.backup
+# WEEX_API_KEY 可作为 OPENAI_API_KEY 的 fallback
+WEEX_API_KEY=...
+LLM_PROVIDER=openai
+OPENAI_BASE_URL=<weex-compatible-url>
+OPENAI_MODEL=<model>
+
+# 可复现压测默认使用 mock LLM
+LLM_PROVIDER=mock HOOK_ENABLED=true RAG_ENABLED=false make up
+
+# Grafana: http://localhost:3000  默认 admin/admin
+# Prometheus: http://localhost:9090
+
+# 运行 RunAgent mock 压测
+make bench-run
+
+# 真实 WEEX/OpenAI-compatible 冒烟测试
+LLM_PROVIDER=openai ./bin/agentctl run --prompt "用一句话介绍 AgentForge"
+```
+
+常用 PromQL：
+
+```promql
+sum by (status) (rate(agentforge_runs_total[1m]))
+histogram_quantile(0.95, sum by (le, status) (rate(agentforge_run_duration_seconds_bucket[5m])))
+sum(rate(agentforge_run_tokens_total[1m]))
+```
+
+## 16. Roadmap（参考 PROJECT_DESIGN.md §7）
 
 | 周 | 主题 |
 |---|---|
@@ -543,7 +576,7 @@ docker run --rm -v "$PWD:/src" -w /src tinygo/tinygo:0.33.0 \
 | W6 | ✅ RAG（pgvector + reranker） |
 | W7 | ✅ Multi-Agent 编排 + 上下文压缩 |
 | W8 | ✅ Hook 服务 + Skill/RAG/Hook 服务拆分 + Scheduler Pick/Leader |
-| W9 | OTel + Grafana + K6 压测 |
+| W9 | ✅ OTel + Prometheus + Grafana + mock RunAgent 压测 |
 | W10 | 文档、demo 视频、简历话术 |
 
 ---

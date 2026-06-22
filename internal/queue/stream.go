@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wzhnbsixsixsix/agentforge/internal/obs"
 	redisstore "github.com/wzhnbsixsixsix/agentforge/internal/storage/redis"
 
 	"github.com/redis/go-redis/v9"
@@ -67,8 +68,10 @@ func (q *StreamQueue) Publish(ctx context.Context, t Task) (string, error) {
 		Values: map[string]any{"task": string(payload)},
 	}).Result()
 	if err != nil {
+		obs.QueueEvents.WithLabelValues(obs.ServiceName(), "task_publish", "error").Inc()
 		return "", fmt.Errorf("xadd: %w", err)
 	}
+	obs.QueueEvents.WithLabelValues(obs.ServiceName(), "task_publish", "ok").Inc()
 	return id, nil
 }
 
@@ -127,9 +130,11 @@ func (q *StreamQueue) Consume(ctx context.Context, group, consumer string, maxRe
 				}
 				err := h(ctx, Delivery{ID: msg.ID, Task: t})
 				if err == nil {
+					obs.QueueEvents.WithLabelValues(obs.ServiceName(), "task_consume", "ok").Inc()
 					_ = q.cli.XAck(ctx, q.stream, group, msg.ID).Err()
 					continue
 				}
+				obs.QueueEvents.WithLabelValues(obs.ServiceName(), "task_consume", "error").Inc()
 				t.Attempt++
 				if t.Attempt >= maxRetry {
 					_ = q.deadLetter(ctx, group, msg.ID, raw, err)

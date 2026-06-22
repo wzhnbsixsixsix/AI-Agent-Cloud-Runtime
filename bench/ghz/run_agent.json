@@ -1,0 +1,17 @@
+{
+  "proto": "pkg/proto/agent.proto",
+  "call": "agentforge.v1.AgentService.RunAgent",
+  "host": "localhost:8080",
+  "insecure": true,
+  "total": 100,
+  "concurrency": 8,
+  "data": {
+    "user_id": "ghz-bench",
+    "prompt": "用一句话介绍 AgentForge",
+    "model": ""
+  },
+  "metadata": {
+    "x-agentforge-bench": "w9"
+  },
+  "notes": "RunAgent is bidirectional streaming. If your ghz version cannot drive bidi streams, use `make bench-run`, which uses bin/bench run-agent against the same API."
+}

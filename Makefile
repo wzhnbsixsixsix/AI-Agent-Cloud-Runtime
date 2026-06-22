@@ -115,6 +115,22 @@ down: ## docker compose down
 logs: ## docker compose logs -f
 	@docker compose --env-file .env -f deploy/docker-compose.yml logs -f
 
+.PHONY: obs-config
+obs-config: ## 校验 docker compose / Prometheus / Grafana 配置
+	@docker compose --env-file .env -f deploy/docker-compose.yml config >/dev/null
+	@echo "observability config ok"
+
+.PHONY: bench-run
+bench-run: build-bench ## W9: mock LLM RunAgent 压测
+	@LLM_PROVIDER=mock GATEWAY_DIAL_ADDR=$${GATEWAY_DIAL_ADDR:-localhost:8080} \
+		$(BIN_DIR)/bench run-agent --grpc $${GATEWAY_DIAL_ADDR:-localhost:8080} \
+		--num $${BENCH_TOTAL:-100} --concurrency $${BENCH_CONCURRENCY:-8} \
+		--prompt "$${BENCH_PROMPT:-用一句话介绍 AgentForge}"
+
+.PHONY: bench-report
+bench-report: ## 打印 W9 压测报告模板位置
+	@echo "Fill docs/W9_BENCH_REPORT.md after running: make bench-run"
+
 .PHONY: clean
 clean: ## 清理构建产物
 	@rm -rf $(BIN_DIR) coverage.txt

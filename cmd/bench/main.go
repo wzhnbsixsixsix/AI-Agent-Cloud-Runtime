@@ -20,7 +20,7 @@ func main() {
 		Use:   "bench",
 		Short: "AgentForge ACP vs gRPC benchmark",
 	}
-	root.AddCommand(newRTTCmd(), newThroughputCmd(), newConnectCmd())
+	root.AddCommand(newRTTCmd(), newThroughputCmd(), newConnectCmd(), newRunAgentCmd())
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

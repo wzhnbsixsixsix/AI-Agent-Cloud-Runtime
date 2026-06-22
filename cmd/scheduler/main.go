@@ -32,6 +32,23 @@ func main() {
 
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	telemetry, err := obs.InitTelemetry(rootCtx, obs.TelemetryConfig{
+		ServiceName:        cfg.OTELServiceName,
+		DefaultServiceName: "scheduler",
+		OTELEnabled:        cfg.OTELEnabled,
+		OTLPEndpoint:       cfg.OTELExporterOTLPEndpoint,
+		MetricsEnabled:     cfg.MetricsEnabled,
+		MetricsAddr:        cfg.MetricsAddr,
+		MetricsPath:        cfg.MetricsPath,
+	}, logger)
+	if err != nil {
+		logger.Warn("telemetry init", "err", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = telemetry.Shutdown(shutdownCtx)
+		cancel()
+	}()
 
 	rdb, err := redisstore.New(rootCtx, redisstore.Options{
 		Addr: cfg.RedisAddr, Password: cfg.RedisPassword, DB: cfg.RedisDB,

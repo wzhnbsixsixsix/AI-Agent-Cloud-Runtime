@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/wzhnbsixsixsix/agentforge/internal/obs"
 	redisstore "github.com/wzhnbsixsixsix/agentforge/internal/storage/redis"
 
 	"github.com/redis/go-redis/v9"
@@ -46,9 +47,15 @@ func NewPubSub(cli *redis.Client) *PubSub { return &PubSub{cli: cli} }
 func (p *PubSub) Publish(ctx context.Context, runID string, ev Event) error {
 	payload, err := json.Marshal(ev)
 	if err != nil {
+		obs.QueueEvents.WithLabelValues(obs.ServiceName(), "event_publish", "error").Inc()
 		return err
 	}
-	return p.cli.Publish(ctx, redisstore.Keys.EventsTopic(runID), payload).Err()
+	if err := p.cli.Publish(ctx, redisstore.Keys.EventsTopic(runID), payload).Err(); err != nil {
+		obs.QueueEvents.WithLabelValues(obs.ServiceName(), "event_publish", "error").Inc()
+		return err
+	}
+	obs.QueueEvents.WithLabelValues(obs.ServiceName(), "event_publish", string(ev.Kind)).Inc()
+	return nil
 }
 
 // Subscribe 返回 Event channel + cancel func；使用方关闭 cancel 释放订阅。

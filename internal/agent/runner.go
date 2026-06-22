@@ -49,11 +49,25 @@ func NewRunner(h history.Store, p llm.Provider, ev *queue.PubSub) *Runner {
 }
 
 // Run 完整执行流程：状态机 → 写 user 历史 → LLM 流式 → 透传 token → 落 assistant 历史 → 终态事件。
-func (r *Runner) Run(ctx context.Context, t queue.Task) error {
+func (r *Runner) Run(ctx context.Context, t queue.Task) (runErr error) {
 	if t.RunID == "" {
 		return errors.New("empty run id")
 	}
 	ctx = obs.WithTraceID(obs.WithRunID(ctx, t.RunID), t.TraceID)
+	ctx, span := obs.StartSpan(ctx, "agent.run",
+		obs.Attr("agentforge.user_id", t.UserID),
+		obs.Attr("llm.model", t.Model),
+	)
+	runStart := time.Now()
+	defer func() {
+		status := "ok"
+		if runErr != nil {
+			status = "error"
+		}
+		obs.RunsTotal.WithLabelValues(obs.ServiceName(), status).Inc()
+		obs.RunDuration.WithLabelValues(obs.ServiceName(), status).Observe(time.Since(runStart).Seconds())
+		obs.EndSpan(span, runErr)
+	}()
 	log := obs.LoggerFromContext(ctx)
 	log.Info("run start", "user", t.UserID, "model", t.Model)
 
@@ -97,8 +111,12 @@ func (r *Runner) Run(ctx context.Context, t queue.Task) error {
 		Content: "You are AgentForge runtime, a helpful assistant. Answer concisely.",
 	})
 	if r.SkillSelector != nil {
-		selected, err := r.SkillSelector.Select(ctx, t.Prompt)
+		selectStart := time.Now()
+		selectCtx, selectSpan := obs.StartSpan(ctx, "skill.select")
+		selected, err := r.SkillSelector.Select(selectCtx, t.Prompt)
+		selectStatus := "ok"
 		if err != nil {
+			selectStatus = "error"
 			log.Warn("skill select failed", "err", err)
 		} else if rendered := r.SkillRenderer.RenderSystemMessage(selected); rendered != "" {
 			msgs = append(msgs, llm.Message{
@@ -107,14 +125,21 @@ func (r *Runner) Run(ctx context.Context, t queue.Task) error {
 			})
 			log.Info("skills loaded", "count", len(selected))
 		}
+		obs.SkillDuration.WithLabelValues(obs.ServiceName(), selectStatus).Observe(time.Since(selectStart).Seconds())
+		obs.SkillSelected.WithLabelValues(obs.ServiceName()).Observe(float64(len(selected)))
+		obs.EndSpan(selectSpan, err)
 	}
 	if r.RAGRetriever != nil {
 		tenantID := r.RAGTenantID
 		if tenantID == "" {
 			tenantID = "default"
 		}
-		results, err := r.RAGRetriever.Retrieve(ctx, tenantID, t.Prompt, r.RAGTopK, r.RAGMinScore)
+		ragStart := time.Now()
+		ragCtx, ragSpan := obs.StartSpan(ctx, "rag.retrieve", obs.Attr("rag.tenant_id", tenantID))
+		results, err := r.RAGRetriever.Retrieve(ragCtx, tenantID, t.Prompt, r.RAGTopK, r.RAGMinScore)
+		ragStatus := "ok"
 		if err != nil {
+			ragStatus = "error"
 			log.Warn("rag retrieve failed", "err", err)
 		} else if rendered := rag.RenderSystemMessage(results); rendered != "" {
 			msgs = append(msgs, llm.Message{
@@ -123,16 +148,26 @@ func (r *Runner) Run(ctx context.Context, t queue.Task) error {
 			})
 			log.Info("rag context loaded", "tenant", tenantID, "chunks", len(results))
 		}
+		obs.RAGDuration.WithLabelValues(obs.ServiceName(), ragStatus).Observe(time.Since(ragStart).Seconds())
+		obs.RAGResults.WithLabelValues(obs.ServiceName()).Observe(float64(len(results)))
+		obs.EndSpan(ragSpan, err)
 	}
 	if r.HookClient != nil {
-		resp, err := r.HookClient.Execute(ctx, hook.Request{
+		hookStart := time.Now()
+		hookCtx, hookSpan := obs.StartSpan(ctx, "hook.pre_llm", obs.Attr("hook.event", string(hook.EventPreLLM)))
+		resp, err := r.HookClient.Execute(hookCtx, hook.Request{
 			Event:   hook.EventPreLLM,
 			RunID:   t.RunID,
 			TraceID: t.TraceID,
 		})
+		hookStatus := "ok"
 		if err != nil {
+			hookStatus = "error"
 			log.Warn("pre-llm hook failed", "err", err)
 			if r.HookFailClosed {
+				obs.HookTotal.WithLabelValues(obs.ServiceName(), string(hook.EventPreLLM), hookStatus).Inc()
+				obs.HookDuration.WithLabelValues(obs.ServiceName(), string(hook.EventPreLLM), hookStatus).Observe(time.Since(hookStart).Seconds())
+				obs.EndSpan(hookSpan, err)
 				r.fail(ctx, t, cur, "hook_pre_llm", err)
 				return err
 			}
@@ -143,6 +178,9 @@ func (r *Runner) Run(ctx context.Context, t queue.Task) error {
 				}
 			}
 		}
+		obs.HookTotal.WithLabelValues(obs.ServiceName(), string(hook.EventPreLLM), hookStatus).Inc()
+		obs.HookDuration.WithLabelValues(obs.ServiceName(), string(hook.EventPreLLM), hookStatus).Observe(time.Since(hookStart).Seconds())
+		obs.EndSpan(hookSpan, err)
 	}
 	for _, m := range prior {
 		msgs = append(msgs, llm.Message{Role: llm.Role(m.Role), Content: m.Content})
@@ -262,6 +300,7 @@ func (r *Runner) Run(ctx context.Context, t queue.Task) error {
 		Kind:    queue.EventDone,
 		Total:   tokenCnt,
 	})
+	obs.RunTokens.WithLabelValues(obs.ServiceName()).Add(float64(tokenCnt))
 	log.Info("run done", "tokens", tokenCnt, "tool_rounds", toolRounds, "elapsed_ms", time.Since(startTime).Milliseconds())
 	return nil
 }
@@ -270,18 +309,41 @@ func (r *Runner) executePostLLMHook(ctx context.Context, t queue.Task, text stri
 	if r.HookClient == nil {
 		return
 	}
+	start := time.Now()
+	hookCtx, span := obs.StartSpan(ctx, "hook.post_llm", obs.Attr("hook.event", string(hook.EventPostLLM)))
 	payload := map[string]any{"assistant_text": text, "tool_calls": toolCalls}
 	raw, _ := json.Marshal(payload)
-	_, _ = r.HookClient.Execute(ctx, hook.Request{
+	_, err := r.HookClient.Execute(hookCtx, hook.Request{
 		Event:       hook.EventPostLLM,
 		RunID:       t.RunID,
 		TraceID:     t.TraceID,
 		PayloadJSON: raw,
 	})
+	status := "ok"
+	if err != nil {
+		status = "error"
+	}
+	obs.HookTotal.WithLabelValues(obs.ServiceName(), string(hook.EventPostLLM), status).Inc()
+	obs.HookDuration.WithLabelValues(obs.ServiceName(), string(hook.EventPostLLM), status).Observe(time.Since(start).Seconds())
+	obs.EndSpan(span, err)
 }
 
 func (r *Runner) streamOnce(ctx context.Context, t queue.Task, msgs []llm.Message, tools []llm.ToolDefinition, idx *int64) (string, []llm.ToolCall, int64, error) {
-	streamCtx, cancel := context.WithCancel(ctx)
+	start := time.Now()
+	streamCtx, span := obs.StartSpan(ctx, "llm.stream",
+		obs.Attr("llm.provider", r.Provider.Name()),
+		obs.Attr("llm.model", t.Model),
+	)
+	var streamErr error
+	defer func() {
+		status := "ok"
+		if streamErr != nil {
+			status = "error"
+		}
+		obs.LLMStreamDuration.WithLabelValues(obs.ServiceName(), r.Provider.Name(), status).Observe(time.Since(start).Seconds())
+		obs.EndSpan(span, streamErr)
+	}()
+	streamCtx, cancel := context.WithCancel(streamCtx)
 	defer cancel()
 	ch, err := r.Provider.Stream(streamCtx, llm.Req{
 		Model:    t.Model,
@@ -289,6 +351,7 @@ func (r *Runner) streamOnce(ctx context.Context, t queue.Task, msgs []llm.Messag
 		Tools:    tools,
 	})
 	if err != nil {
+		streamErr = err
 		return "", nil, 0, err
 	}
 
@@ -299,6 +362,7 @@ func (r *Runner) streamOnce(ctx context.Context, t queue.Task, msgs []llm.Messag
 	)
 	for ev := range ch {
 		if ev.Err != nil {
+			streamErr = ev.Err
 			return "", nil, tokenCnt, ev.Err
 		}
 		if len(ev.ToolCalls) > 0 {
@@ -342,7 +406,9 @@ func (r *Runner) llmTools() []llm.ToolDefinition {
 	return out
 }
 
-func (r *Runner) compactHistory(ctx context.Context, t queue.Task, from State, prior []history.Message) (bool, error) {
+func (r *Runner) compactHistory(ctx context.Context, t queue.Task, from State, prior []history.Message) (compacted bool, compactErr error) {
+	ctx, span := obs.StartSpan(ctx, "history.compact")
+	defer func() { obs.EndSpan(span, compactErr) }()
 	if !r.CompactPolicy.Enabled {
 		return false, nil
 	}
@@ -371,7 +437,9 @@ func (r *Runner) compactHistory(ctx context.Context, t queue.Task, from State, p
 	return r.CompactPolicy.CompactIfNeeded(ctx, r.History, t.RunID, prior)
 }
 
-func (r *Runner) executeToolCall(ctx context.Context, t queue.Task, callID string, tc llm.ToolCall) (queue.ToolResultEvent, error) {
+func (r *Runner) executeToolCall(ctx context.Context, t queue.Task, callID string, tc llm.ToolCall) (ev queue.ToolResultEvent, err error) {
+	ctx, span := obs.StartSpan(ctx, "agent.tool_call", obs.Attr("tool.name", tc.Name))
+	defer func() { obs.EndSpan(span, err) }()
 	if tc.Name == "dispatch_subagent" && r.MultiAgentEnabled {
 		return r.dispatchSubagent(ctx, t, callID, tc)
 	}

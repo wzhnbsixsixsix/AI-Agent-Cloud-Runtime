@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/wzhnbsixsixsix/agentforge/internal/discovery"
+	"github.com/wzhnbsixsixsix/agentforge/internal/obs"
 	sched "github.com/wzhnbsixsixsix/agentforge/internal/scheduler"
 
 	pb "github.com/wzhnbsixsixsix/agentforge/pkg/proto/gen"
@@ -45,8 +46,20 @@ func (svc *schedulerService) Health(ctx context.Context, _ *pb.HealthRequest) (*
 }
 
 func (svc *schedulerService) Pick(ctx context.Context, req *pb.PickRequest) (*pb.PickResponse, error) {
+	start := time.Now()
+	ctx, span := obs.StartSpan(ctx, "scheduler.pick", obs.Attr("run_id", req.GetRunId()))
+	var pickErr error
+	defer func() {
+		status := "ok"
+		if pickErr != nil {
+			status = "error"
+		}
+		obs.SchedulerPickDuration.WithLabelValues(obs.ServiceName(), status).Observe(time.Since(start).Seconds())
+		obs.EndSpan(span, pickErr)
+	}()
 	leader := svc.leaderInfo(ctx)
 	if svc.raftEnabled && svc.elector != nil && !svc.elector.IsLeader() {
+		obs.SchedulerPickDuration.WithLabelValues(obs.ServiceName(), "not_leader").Observe(time.Since(start).Seconds())
 		return &pb.PickResponse{
 			IsLeader:   false,
 			LeaderId:   leader.ID,
@@ -56,9 +69,11 @@ func (svc *schedulerService) Pick(ctx context.Context, req *pb.PickRequest) (*pb
 	}
 	workerID, err := svc.s.Pick(ctx, req.GetRunId())
 	if err != nil {
+		pickErr = err
 		return nil, err
 	}
 	ws, _ := svc.s.List(ctx)
+	obs.SchedulerLiveWorkers.WithLabelValues(obs.ServiceName()).Set(float64(len(ws)))
 	var picked sched.WorkerInfo
 	for _, w := range ws {
 		if w.WorkerID == workerID {
@@ -77,6 +92,8 @@ func (svc *schedulerService) Pick(ctx context.Context, req *pb.PickRequest) (*pb
 }
 
 func (svc *schedulerService) Leader(ctx context.Context, _ *pb.LeaderRequest) (*pb.LeaderResponse, error) {
+	ctx, span := obs.StartSpan(ctx, "scheduler.leader")
+	defer obs.EndSpan(span, nil)
 	leader := svc.leaderInfo(ctx)
 	return &pb.LeaderResponse{
 		LeaderId:   leader.ID,

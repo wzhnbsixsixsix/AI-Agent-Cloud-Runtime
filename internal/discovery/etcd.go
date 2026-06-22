@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wzhnbsixsixsix/agentforge/internal/obs"
+
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/concurrency"
 )
@@ -35,19 +37,25 @@ type Registration struct {
 }
 
 func Register(ctx context.Context, endpoints []string, inst Instance, ttlSeconds int64) (*Registration, error) {
+	ctx, span := obs.StartSpan(ctx, "discovery.register", obs.Attr("discovery.service", inst.Service), obs.Attr("discovery.id", inst.ID))
+	var regErr error
+	defer func() { obs.EndSpan(span, regErr) }()
 	if inst.Service == "" || inst.ID == "" || inst.Addr == "" {
-		return nil, fmt.Errorf("discovery: service, id, and addr are required")
+		regErr = fmt.Errorf("discovery: service, id, and addr are required")
+		return nil, regErr
 	}
 	if ttlSeconds <= 0 {
 		ttlSeconds = 10
 	}
 	cli, err := newClient(endpoints)
 	if err != nil {
+		regErr = err
 		return nil, err
 	}
 	lease, err := cli.Grant(ctx, ttlSeconds)
 	if err != nil {
 		_ = cli.Close()
+		regErr = err
 		return nil, err
 	}
 	regCtx, cancel := context.WithCancel(ctx)
@@ -58,17 +66,20 @@ func Register(ctx context.Context, endpoints []string, inst Instance, ttlSeconds
 	if err != nil {
 		cancel()
 		_ = cli.Close()
+		regErr = err
 		return nil, err
 	}
 	if _, err := cli.Put(ctx, key, string(raw), clientv3.WithLease(lease.ID)); err != nil {
 		cancel()
 		_ = cli.Close()
+		regErr = err
 		return nil, err
 	}
 	keepAlive, err := cli.KeepAlive(regCtx, lease.ID)
 	if err != nil {
 		cancel()
 		_ = cli.Close()
+		regErr = err
 		return nil, err
 	}
 	go func() {
@@ -119,14 +130,19 @@ type Elector struct {
 }
 
 func StartSchedulerElection(ctx context.Context, endpoints []string, id, addr string, ttlSeconds int) (*Elector, error) {
+	ctx, span := obs.StartSpan(ctx, "scheduler.election.start", obs.Attr("scheduler.node_id", id))
+	var startErr error
+	defer func() { obs.EndSpan(span, startErr) }()
 	if id == "" || addr == "" {
-		return nil, fmt.Errorf("discovery: scheduler id and advertise addr are required")
+		startErr = fmt.Errorf("discovery: scheduler id and advertise addr are required")
+		return nil, startErr
 	}
 	if ttlSeconds <= 0 {
 		ttlSeconds = 3
 	}
 	cli, err := newClient(endpoints)
 	if err != nil {
+		startErr = err
 		return nil, err
 	}
 	eCtx, cancel := context.WithCancel(ctx)
@@ -193,11 +209,14 @@ func (e *Elector) loop(ctx context.Context) {
 		}
 		el := concurrency.NewElection(session, e.key)
 		value, _ := json.Marshal(LeaderInfo{ID: e.id, Addr: e.addr})
-		if err := el.Campaign(ctx, string(value)); err != nil {
+		campaignCtx, campaignSpan := obs.StartSpan(ctx, "scheduler.election.campaign", obs.Attr("scheduler.node_id", e.id))
+		if err := el.Campaign(campaignCtx, string(value)); err != nil {
+			obs.EndSpan(campaignSpan, err)
 			_ = session.Close()
 			sleepContext(ctx, time.Second)
 			continue
 		}
+		obs.EndSpan(campaignSpan, nil)
 		e.setLeader(LeaderInfo{ID: e.id, Addr: e.addr}, true)
 		select {
 		case <-ctx.Done():

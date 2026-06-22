@@ -131,6 +131,14 @@ bench-run: build-bench ## W9: mock LLM RunAgent 压测
 bench-report: ## 打印 W9 压测报告模板位置
 	@echo "Fill docs/W9_BENCH_REPORT.md after running: make bench-run"
 
+.PHONY: final-check
+final-check: ## W10: 最终交付检查（proto + test + build + obs-config + diff）
+	@$(MAKE) --no-print-directory proto
+	@$(GO_TEST) ./...
+	@$(GO_BUILD) ./cmd/...
+	@$(MAKE) --no-print-directory obs-config
+	@git diff --check
+
 .PHONY: clean
 clean: ## 清理构建产物
 	@rm -rf $(BIN_DIR) coverage.txt

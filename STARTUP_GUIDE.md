@@ -13,10 +13,16 @@ AgentForge 当前是一套云原生多智能体运行时。启动后会有这些
 | 组件 | 系统设计里的角色 | 默认端口 | 说明 |
 |---|---|---:|---|
 | `gateway` | API Gateway / 接入层 | `8080` gRPC, `8090` ACP | 接收 CLI 请求，投递 Run 任务，回传流式事件 |
-| `scheduler` | Worker 注册中心 | `8081`, `8082` | W1-W6 主要做 worker 注册和心跳 |
+| `scheduler` | Worker 注册中心 + 调度控制面 | `8081`, `8082` | worker 注册、心跳、W8 leader/pick |
 | `worker` | 执行节点 | 无外部端口 | 消费任务，调用 LLM，执行 tool，注入 Skill/RAG 上下文 |
+| `skilld` | Skill 服务 | `8084` | 读取 `skills/`，按 prompt 选择相关 Skill |
+| `ragd` | RAG 服务 | `8085` | 负责 RAG ingest/query/retrieve，访问 Postgres |
+| `hookd` | Hook 服务 | `8083` | 执行规则 Hook 与 wazero WASI Hook |
 | `redis` | 队列 + Pub/Sub + History | `6379` | Redis Stream 任务队列、事件广播、历史存储 |
 | `postgres` | RAG 存储 | `5432` | pgvector 存储文档 chunk 和 embedding |
+| `etcd` | 服务发现 + leader election | `2379` | W8 服务注册与 scheduler 选主 |
+| `prometheus` | 指标采集 | `9090` | 抓取各服务 `/metrics` |
+| `grafana` | 可观测 dashboard | `3000` | 展示 AgentForge dashboard |
 | `agentctl` | 客户端 CLI | 无服务端口 | 发起 run/tool/rag 命令 |
 
 核心链路：
@@ -604,7 +610,7 @@ storage layer
   Postgres + pgvector: vector chunks
 ```
 
-当前 W6 的真实执行顺序：
+当前 W10 的真实执行顺序：
 
 ```text
 1. agentctl run 发送 prompt
@@ -1037,3 +1043,142 @@ LLM_PROVIDER=openai ./bin/agentctl run --prompt "用一句话介绍 AgentForge"
 ```
 
 如果看到 `[DONE] run_id=... trace_id=...`，说明真实 OpenAI-compatible 链路可用。
+
+---
+
+## 17. W10 从零演示路线（15-30 分钟）
+
+这条路线适合录作品集视频、给面试官 live demo，或者让一个不熟 Go 的同事复现。默认用 `LLM_PROVIDER=mock`，这样不会被真实模型 key、限流、网络波动卡住。
+
+### 17.1 先做静态验收
+
+如果你有 Make，直接跑：
+
+```bash
+make final-check
+```
+
+它会依次执行：
+
+```bash
+make proto
+go test ./...
+go build ./cmd/...
+make obs-config
+git diff --check
+```
+
+如果本机没有 Go，Makefile 会用 `golang:1.22-alpine` 容器完成等价构建。`make proto` 如果本地没有 buf，会走 `bufbuild/buf` Docker 镜像。
+
+### 17.2 启动可演示环境
+
+编辑 `.env`，推荐至少确认这些项：
+
+```dotenv
+LLM_PROVIDER=mock
+SANDBOX_DRIVER=memory
+SKILL_ENABLED=true
+RAG_ENABLED=true
+HOOK_ENABLED=true
+DISCOVERY_ENABLED=true
+OTEL_ENABLED=true
+METRICS_ENABLED=true
+```
+
+启动：
+
+```bash
+make up
+```
+
+查看状态：
+
+```bash
+docker compose --env-file .env -f deploy/docker-compose.yml ps
+```
+
+### 17.3 跑基础 Run
+
+```bash
+./bin/agentctl run --prompt "用一句话介绍 AgentForge"
+```
+
+看到 `[DONE] run_id=... trace_id=...` 就说明 gateway、Redis、worker、LLM provider、event fanout 主链路正常。
+
+### 17.4 演示 Hook 拒绝危险命令
+
+```bash
+./bin/agentctl hook list --addr localhost:8083
+
+./bin/agentctl hook run --addr localhost:8083 \
+  --event PreToolUse \
+  --file examples/hooks/pretool_bash.json
+```
+
+期望看到 `allowed=false` 或类似 deny 结果。讲解重点：危险 tool 在执行前被 `hookd` 拦截，不需要改 `RunAgent` 对外协议。
+
+### 17.5 演示 RAG 入库和查询
+
+```bash
+./bin/agentctl rag ingest --path README.md --tenant default --source README.md
+
+./bin/agentctl rag query \
+  --query "W9 可观测怎么工作" \
+  --tenant default \
+  --top-k 5
+```
+
+期望返回 README 的相关 chunk。讲解重点：RAG 内容会作为 `<untrusted>` context 注入，防止把外部文档当成高优先级系统指令。
+
+### 17.6 演示 Pipeline
+
+```bash
+./bin/agentctl pipeline run --file examples/pipeline/readme-review.yaml
+```
+
+期望输出多个 step 的状态和 run id。讲解重点：W7 的 pipeline 是轻量 DAG，后序 step 会拿到前序输出。
+
+### 17.7 打开 Grafana
+
+浏览器打开：
+
+```text
+http://localhost:3000
+```
+
+默认账号密码：
+
+```text
+admin / admin
+```
+
+进入 AgentForge dashboard，看 run rate、duration、token、tool、hook、worker 等指标。Prometheus 在：
+
+```text
+http://localhost:9090
+```
+
+### 17.8 跑 mock 压测
+
+```bash
+make bench-run
+```
+
+压测结果只用于说明 runtime 开销，真实模型 key 不用于默认压测。需要写报告时，把本机输出填到：
+
+```text
+docs/W9_BENCH_REPORT.md
+```
+
+### 17.9 看最终交付材料
+
+演示结束后，可以按这几个文件讲：
+
+- `docs/FINAL_DELIVERY.md`：一页式交付说明。
+- `docs/ARCHITECTURE.md`：Mermaid 架构图。
+- `docs/DEMO_SCRIPT.md`：3 分钟视频脚本。
+- `docs/RESUME_TALK_TRACK.md`：简历和面试话术。
+- `docs/ACCEPTANCE_CHECKLIST.md`：最终验收清单。
+- `docs/ENTERPRISE_OPS_DEMO.md`：企业 Lark 中台 fork 计划。
+
+W10 的边界也要说清楚：main 已交付的是通用 runtime；Lark 企业中台是 fork/分支实例方向；gVisor、Firecracker、eBPF、CRIU、Loki/Tempo、worker-specific queue shard 都是后续增强，不在 W10 已实现范围内。

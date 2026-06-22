@@ -3,7 +3,7 @@
 > 项目代号：**AgentForge** — 云原生多智能体运行时。  
 > 详细设计见 [`PROJECT_DESIGN.md`](./PROJECT_DESIGN.md)。
 
-当前进度：**W7 完成 — Multi-Agent + Context Compression 纵切**。
+当前进度：**W10 完成 — 作品集交付包**。
 
 - W1：可在本地用 Docker Compose 一键启动 `gateway + scheduler + worker + redis`，通过 `agentctl run --prompt "..."` 流式收到 OpenAI 兼容 API 的逐 token 响应。
 - W2：gateway 同时监听 `:8080`(gRPC) 与 `:8090`(ACP)。`agentctl --proto acp` 可走自研协议；新增 `agentctl resume --run-id ...` 演示断线续传；`bin/bench` 工具一条命令打两条路径出对比数据。
@@ -12,6 +12,9 @@
 - **W5**：新增 `internal/skill` 动态加载链路，worker 启动时扫描 `skills/**/SKILL.md`，按 prompt 规则选择 Top-K skill 并把完整内容注入本次 LLM system context；内置 5 个 skill 覆盖 sandbox 文件、bash、HTTP、Go 测试和项目说明。
 - **W6**：新增 `internal/rag`，支持本地文本/Markdown/代码文件切片、确定性 hash embedding、Postgres + pgvector 存储、hybrid query、`agentctl rag ingest/query`，worker 可在 Run 前检索相关 chunk 并以 `<untrusted>` context 注入 LLM。
 - **W7**：新增 `internal/orchestrator`，支持本地 Supervisor subagent、pipeline DAG demo 和 History 自动压缩；`dispatch_subagent` 可作为 LLM tool 暴露，`agentctl pipeline run --file ...` 可运行多 step 编排。
+- **W8**：新增 `skilld` / `ragd` / `hookd` 独立 gRPC 服务、wazero WASI Hook、etcd 服务发现、scheduler Leader/Pick 调度面；外部 `RunAgent`、ACP 和 RAG CLI 保持兼容。
+- **W9**：接入 OpenTelemetry、Prometheus、Grafana、mock RunAgent 压测，并支持 `WEEX_API_KEY` 作为 OpenAI-compatible key fallback。
+- **W10**：完成最终交付文档、架构图、ADR、3 分钟 demo 脚本、验收清单、简历话术和企业中台 fork 计划。
 
 ---
 
@@ -72,7 +75,7 @@ W2 阶段控制面（`gateway↔scheduler`）保持 gRPC，只在外部入口（
 
 ---
 
-## 2. 目录结构
+## 3. 目录结构
 
 ```
 AI-Agent-Cloud-Runtime/
@@ -80,13 +83,19 @@ AI-Agent-Cloud-Runtime/
 │   ├── gateway/      # gRPC 入口
 │   ├── scheduler/    # worker 注册中心
 │   ├── worker/       # 任务消费 + LLM 调用
+│   ├── skilld/       # W8 Skill 独立服务
+│   ├── ragd/         # W8 RAG 独立服务
+│   ├── hookd/        # W8 Hook 独立服务
+│   ├── bench/        # W9 mock RunAgent 压测
 │   └── agentctl/     # CLI 客户端
 ├── internal/
 │   ├── agent/        # Run 状态机 + Runner
 │   ├── config/       # env -> 三套 Config
+│   ├── discovery/    # W8 etcd 注册 + leader election
 │   ├── history/      # 可变历史（Redis Hash+ZSet）
+│   ├── hook/         # W8 wazero Hook runtime
 │   ├── llm/          # Provider（OpenAI SSE / Mock / factory）
-│   ├── obs/          # slog logger + trace_id
+│   ├── obs/          # slog + OTel + Prometheus metrics
 │   ├── orchestrator/ # W7 Supervisor / Pipeline / Compact
 │   ├── queue/        # Redis Stream 消费组 + Pub/Sub
 │   ├── rag/          # W6 chunking / embedding / pgvector retrieve
@@ -95,8 +104,11 @@ AI-Agent-Cloud-Runtime/
 │   └── storage/redis # 客户端工厂 + key 模板
 ├── pkg/proto/        # agent.proto / scheduler.proto（gen/ 由 buf 生成）
 ├── skills/           # 内置 SKILL.md
+├── hooks/            # W8 demo Hook manifest / wasm
+├── bench/            # ghz/bench 输入示例
+├── docs/             # W10 架构、ADR、demo、验收、简历话术
 ├── build/Dockerfile  # 多阶段（buf-gen → go-build → distroless）
-├── deploy/           # docker-compose.yml + override 示例
+├── deploy/           # docker-compose.yml + observability 配置
 ├── Makefile
 ├── buf.yaml / buf.gen.yaml
 ├── .env.example
@@ -105,7 +117,7 @@ AI-Agent-Cloud-Runtime/
 
 ---
 
-## 3. 环境要求
+## 4. 环境要求
 
 - **Docker Desktop**（含 docker compose v2）—— 跑服务必备
 - **GNU Make + bash**（Windows 推荐 git-bash 或 WSL）
@@ -116,7 +128,7 @@ AI-Agent-Cloud-Runtime/
 
 ---
 
-## 4. 快速开始（W1 验收）
+## 5. 快速开始（W1 验收）
 
 ```bash
 # 1) 准备 env
@@ -155,7 +167,7 @@ make down   # 停服并清理 redis 数据
 
 ---
 
-## 5. 常用命令
+## 6. 常用命令
 
 | 命令 | 说明 |
 |------|------|
@@ -164,13 +176,16 @@ make down   # 停服并清理 redis 数据
 | `make build` | 编译所有二进制到 `bin/`；本机无 Go 时自动使用 golang Docker 镜像 |
 | `make test` | 跑全部单测（`go test -race ./...`） |
 | `make cover` | 输出测试覆盖率 |
+| `make obs-config` | 校验 compose / Prometheus / Grafana 配置 |
+| `make bench-run` | W9 mock LLM RunAgent 压测 |
+| `make final-check` | W10 最终交付检查：proto、test、build、obs-config、diff |
 | `make up` / `make down` | docker compose 起 / 停 |
 | `make logs` | 跟随日志 |
 | `docker compose -f deploy/docker-compose.yml up --scale worker=4 -d` | 横向扩展 worker |
 
 ---
 
-## 6. 关键环境变量
+## 7. 关键环境变量
 
 完整列表见 `.env.example`，要点：
 
@@ -178,7 +193,8 @@ make down   # 停服并清理 redis 数据
 |------|------|------|
 | `LLM_PROVIDER` | `openai` | `openai` 或 `mock`（无 key 兜底） |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | 兼容任何 OpenAI 协议端点 |
-| `OPENAI_API_KEY` | _(必填)_ | provider=openai 时必填 |
+| `OPENAI_API_KEY` | _(必填)_ | provider=openai 时优先使用 |
+| `WEEX_API_KEY` | _空_ | `OPENAI_API_KEY` 为空时作为 OpenAI-compatible fallback |
 | `OPENAI_MODEL` | `gpt-4o-mini` | 默认模型 |
 | `WORKER_CONCURRENCY` | `4` | 单 worker 进程内 consumer 数 |
 | `WORKER_REPLICAS` | `1` | docker compose worker 副本数 |
@@ -189,12 +205,20 @@ make down   # 停服并清理 redis 数据
 | `POSTGRES_DSN` | `postgres://...` | W6 RAG 的 Postgres/pgvector DSN |
 | `RAG_ENABLED` | `false` | 是否启用 RAG RPC 与 worker 检索注入 |
 | `RAG_TOP_K` | `5` | 每次 Run/query 最多检索几个 chunk |
+| `HOOK_ENABLED` | `false` | 是否启用 W8 Hook 服务 |
+| `SKILL_SERVICE_ADDR` | `skilld:8084` | W8 worker 访问 Skill 服务地址 |
+| `RAG_SERVICE_ADDR` | `ragd:8085` | W8 gateway/worker 访问 RAG 服务地址 |
+| `HOOK_SERVICE_ADDR` | `hookd:8083` | W8 worker 访问 Hook 服务地址 |
+| `DISCOVERY_ENABLED` | `true` | 是否启用 etcd 服务发现 |
+| `ETCD_ENDPOINTS` | `etcd:2379` | etcd endpoint 列表 |
+| `OTEL_ENABLED` | `true` | 是否启用 OpenTelemetry |
+| `METRICS_ENABLED` | `true` | 是否暴露 Prometheus metrics |
 | `MULTI_AGENT_ENABLED` | `false` | 是否向 LLM 暴露 `dispatch_subagent` |
 | `CONTEXT_COMPACT_ENABLED` | `true` | 是否开启 History 自动压缩 |
 
 ---
 
-## 7. 当前已落地
+## 8. 当前已落地
 
 ### W1
 - [x] Protobuf 定义 (`agent.proto` / `scheduler.proto`) + buf 生成
@@ -253,7 +277,43 @@ make down   # 停服并清理 redis 数据
 - [x] `ContextCompactPolicy`：超过阈值后发布 `COMPACTING` 状态，调用 `History.Fold` 折叠旧消息并保留首尾上下文
 - [x] 单测覆盖 supervisor 限制、pipeline 拓扑/校验/依赖注入、Runner subagent、Runner compaction
 
-## 8. W2 demo 命令
+### W8 — Hook + 服务拆分 + Scheduler Pick
+- [x] `SkillService` / `RAGService` / `HookService` 已加入 proto；新增 `skilld`、`ragd`、`hookd` 三个独立服务
+- [x] gateway 的 `IngestRAG` / `QueryRAG` 保持原入口，内部代理到 `ragd`
+- [x] worker 通过 `SKILL_SERVICE_ADDR` / `RAG_SERVICE_ADDR` / `HOOK_SERVICE_ADDR` 调用独立服务
+- [x] Hook 支持 `PreLLM`、`PostLLM`、`PreToolUse`、`PostToolUse`；wazero WASI Hook 使用 stdin/stdout JSON 协议
+- [x] etcd lease 服务注册、scheduler leader election、`Leader` / `Pick` RPC 与 `agentctl scheduler leader/pick`
+- [x] W8 不改变 Redis Stream 抢占式消费主链路；`Pick` 是可演示的调度控制面
+
+### W9 — Observability + Bench
+- [x] `internal/obs` 接入 OpenTelemetry tracing、Prometheus metrics、metrics HTTP endpoint
+- [x] gateway、worker、scheduler、skilld、ragd、hookd 初始化 telemetry，并覆盖 Run、LLM、Tool、Hook、RAG、Skill、Scheduler、Discovery 指标
+- [x] docker compose 新增 `otel-collector`、`prometheus`、`grafana`，并预置 AgentForge dashboard
+- [x] `WEEX_API_KEY` 可作为 OpenAI-compatible fallback key；`.env` 统一为 Docker/Go dotenv 格式
+- [x] 新增 `bench run-agent`、`make bench-run` 和 [`docs/W9_BENCH_REPORT.md`](./docs/W9_BENCH_REPORT.md)
+
+### W10 — Final Delivery
+- [x] 新增一页式交付说明：[`docs/FINAL_DELIVERY.md`](./docs/FINAL_DELIVERY.md)
+- [x] 新增架构图：[`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)
+- [x] 新增最终验收清单：[`docs/ACCEPTANCE_CHECKLIST.md`](./docs/ACCEPTANCE_CHECKLIST.md)
+- [x] 新增 3 分钟 demo 脚本：[`docs/DEMO_SCRIPT.md`](./docs/DEMO_SCRIPT.md)
+- [x] 新增简历与面试话术：[`docs/RESUME_TALK_TRACK.md`](./docs/RESUME_TALK_TRACK.md)
+- [x] 新增企业中台 fork 计划：[`docs/ENTERPRISE_OPS_DEMO.md`](./docs/ENTERPRISE_OPS_DEMO.md)
+- [x] 新增 ADR：ACP/gRPC 双入口、Docker L1 sandbox、W8 服务拆分、W9 可观测选型
+
+## 9. W10 交付入口
+
+第一次看项目时，建议按这个顺序读：
+
+1. [`docs/FINAL_DELIVERY.md`](./docs/FINAL_DELIVERY.md)：一页看懂项目定位、已交付能力和边界。
+2. [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)：看 `agentctl -> gateway -> Redis -> worker` 主链路和 W5-W9 扩展。
+3. [`STARTUP_GUIDE.md`](./STARTUP_GUIDE.md)：按小白路线从零启动和演示。
+4. [`docs/DEMO_SCRIPT.md`](./docs/DEMO_SCRIPT.md)：录 3 分钟作品集视频或面试 live demo。
+5. [`docs/RESUME_TALK_TRACK.md`](./docs/RESUME_TALK_TRACK.md)：简历 bullets、STAR 讲法和边界问题。
+
+诚实边界：当前 main 已实现 Docker L1 sandbox、WASM Hook、Skill/RAG 服务拆分、etcd election、Prometheus/Grafana 和 mock bench；gVisor、Firecracker、eBPF、CRIU、Loki/Tempo、worker-specific queue shard、Lark 企业业务集成均是已设计未实现的后续增强。
+
+## 10. W2 demo 命令
 
 ```bash
 # 起服（gateway 会同时暴露 :8080 与 :8090）
@@ -276,9 +336,9 @@ make up
 ./bin/agentctl resume --run-id 01HX... --last-seq 0
 ```
 
-预期：RTT / Throughput 两个场景下 ACP 比 gRPC 快 ~3x（ACP 走单连接裸 TCP，无 HTTP/2 帧、HEADERS 压缩与流量调度开销）。
+预期：`bin/bench` 会输出本机 ACP / gRPC 对比数据；对外数字以当前机器实测为准。
 
-## 9. W3 demo — Sandbox + Tool
+## 11. W3 demo — Sandbox + Tool
 
 ### 架构
 
@@ -380,7 +440,7 @@ make up
 | `TOOL_HTTP_ALLOW_LIST` | _空_ | 逗号分隔的 host 白名单；空则禁用 |
 | `GATEWAY_TOOL_CALL_TIMEOUT` | `60s` | gateway 等 worker 结果的超时 |
 
-## 10. W4 demo — Agent 自动调用 Tool
+## 12. W4 demo — Agent 自动调用 Tool
 
 W4 不新增 RPC；仍然使用 `agentctl run`。区别是 worker 会把 W3 的 tool schema 注入 OpenAI 兼容 `tools` 字段，模型返回 `tool_calls` 后由 worker 本地执行，再把 `role=tool` 结果喂回模型继续生成。
 
@@ -404,7 +464,7 @@ AGENT_TOOL_MAX_STEPS=3 make up
 |------|------|------|
 | `AGENT_TOOL_MAX_STEPS` | `5` | 单次 Run 中模型/tool 循环的最大轮数，超出后返回 `tool_loop_limit` |
 
-## 11. W5 demo — Skill 动态加载
+## 13. W5 demo — Skill 动态加载
 
 W5 不新增 RPC；仍然使用 `agentctl run`。区别是 worker 启动时会扫描 `skills/**/SKILL.md`，每次 Run 根据 prompt 选择少量相关 skill，把完整 `SKILL.md` 内容作为额外 system message 注入 LLM 请求。
 
@@ -431,7 +491,7 @@ LLM_PROVIDER=mock SKILL_ENABLED=true make up
 | `SKILL_CACHE_TTL` | `10m` | selector 结果缓存 TTL |
 | `SKILL_CACHE_SIZE` | `1024` | selector 结果缓存最大条目数 |
 
-## 12. W6 demo — RAG 文档检索
+## 14. W6 demo — RAG 文档检索
 
 W6 新增两个 gRPC RPC 和一个 CLI 子命令；`RunAgent` 和 ACP 不变。开启 RAG 后，worker 会在每次 Run 前根据 prompt 检索相关 chunk，并将结果包在 `<untrusted>` 中注入 LLM。
 
@@ -450,7 +510,7 @@ make build
 ./bin/agentctl run --prompt "根据项目文档解释 W5 skill selector"
 ```
 
-当前 W6 限制：默认 embedder 是确定性 hash embedding，便于无外部 key demo；PDF/docx、tree-sitter 代码解析和外部 bge reranker 留到后续增强。
+当前 RAG 限制：默认 embedder 是确定性 hash embedding，便于无外部 key demo；PDF/docx、tree-sitter 代码解析和外部 bge reranker 留到后续增强。
 
 ### 关键环境变量（W6）
 
@@ -463,7 +523,7 @@ make build
 | `RAG_TENANT_ID` | `default` | worker Run 检索使用的 tenant |
 | `RAG_MIN_SCORE` | `0` | 最低检索分数 |
 
-## 13. W7 demo — Multi-Agent + 压缩
+## 15. W7 demo — Multi-Agent + 压缩
 
 ### Supervisor subagent
 
@@ -503,7 +563,7 @@ CONTEXT_COMPACT_ENABLED=true CONTEXT_COMPACT_MAX_CHARS=1200 make up
 | `CONTEXT_COMPACT_KEEP_HEAD` | `4` | 压缩时保留开头消息数 |
 | `CONTEXT_COMPACT_KEEP_TAIL` | `8` | 压缩时保留末尾消息数 |
 
-## 14. W8 demo — Hook + 服务拆分 + Scheduler Pick
+## 16. W8 demo — Hook + 服务拆分 + Scheduler Pick
 
 W8 将 Skill/RAG/Hook 拆成独立 gRPC 服务：`skilld`、`ragd`、`hookd`。Gateway 的 RAG RPC 保持不变但代理到 `ragd`；worker 通过服务地址调用 Skill/RAG/Hook。Scheduler 新增 `Leader` / `Pick` RPC，用于展示 Raft-backed 调度面的接口。
 
@@ -534,7 +594,7 @@ docker run --rm -v "$PWD:/src" -w /src tinygo/tinygo:0.33.0 \
 
 当前 W8 说明：服务拆分、Hook gRPC、wazero WASI hook、PreLLM/PreToolUse/PostToolUse 行为、etcd lease 服务注册、scheduler Raft-backed election、Pick/Leader 已落地。W8 仍不改变 Redis Stream 抢占式消费主链路；`Pick` 先作为可 demo 的调度面，后续再接 worker-specific queue shard。
 
-## 15. W9 demo — Observability + Bench
+## 17. W9 demo — Observability + Bench
 
 W9 接入 OpenTelemetry、Prometheus 和 Grafana。每个服务都会暴露 `/metrics`，Prometheus 默认抓取 gateway、worker、scheduler、skilld、ragd、hookd，Grafana 会自动加载 AgentForge dashboard。
 
@@ -567,7 +627,7 @@ histogram_quantile(0.95, sum by (le, status) (rate(agentforge_run_duration_secon
 sum(rate(agentforge_run_tokens_total[1m]))
 ```
 
-## 16. Roadmap（参考 PROJECT_DESIGN.md §7）
+## 18. Roadmap（参考 PROJECT_DESIGN.md §7）
 
 | 周 | 主题 |
 |---|---|
@@ -577,7 +637,7 @@ sum(rate(agentforge_run_tokens_total[1m]))
 | W7 | ✅ Multi-Agent 编排 + 上下文压缩 |
 | W8 | ✅ Hook 服务 + Skill/RAG/Hook 服务拆分 + Scheduler Pick/Leader |
 | W9 | ✅ OTel + Prometheus + Grafana + mock RunAgent 压测 |
-| W10 | 文档、demo 视频、简历话术 |
+| W10 | ✅ Final delivery：README、架构图、ADR、demo 脚本、简历话术 |
 
 ---
 

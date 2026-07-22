@@ -222,6 +222,18 @@ Loki/Tempo 暂未引入；Grafana W10 主要展示 Prometheus dashboard。性能
 
 ADR：[`docs/adr/004-w9-observability.md`](./docs/adr/004-w9-observability.md)
 
+### 4.10 Agent Control Plane + Collaboration（规划）
+
+下一阶段在 runtime 上增加 Web 前端、Agent Control Plane 和 ACP Collaboration Gateway：
+
+- 前端可创建 Agent，并配置角色、模型、镜像、工具权限、资源额度和 workspace 策略。
+- Agent Manager 为每个 Agent 管理持久容器和独立 workspace volume；这不同于现有按 run 分配的 Docker L1 预热 sandbox。
+- Agent 经 gRPC 调用 RAG、Skill、Hook 及未来的 OCR/Search/Memory/SQL 等能力服务。
+- Agent 经 ACP 向 Collaboration Gateway 投递结构化任务和结果；Gateway 使用 Redis 持久化任务、状态和事件，再路由到目标 Agent。
+- Agent A 可以检索并总结知识，再把附带 citations 和 confidence 的结果发给 Agent B；B 能复用成果，也能按 citation 做复核，避免重复 embedding、检索和 rerank。
+
+该阶段保持现有 `RunAgent` 和 ACP v1 兼容：协作能力以新 task/event contract 增量加入，不改变已有 Run/Event 帧语义。完整边界见 [`docs/adr/005-agent-control-plane-and-collaboration.md`](./docs/adr/005-agent-control-plane-and-collaboration.md)。
+
 ---
 
 ## 5. Roadmap
@@ -254,6 +266,7 @@ ADR：[`docs/adr/004-w9-observability.md`](./docs/adr/004-w9-observability.md)
   - [`docs/adr/002-sandbox-l1-scope.md`](./docs/adr/002-sandbox-l1-scope.md)
   - [`docs/adr/003-w8-service-split.md`](./docs/adr/003-w8-service-split.md)
   - [`docs/adr/004-w9-observability.md`](./docs/adr/004-w9-observability.md)
+  - [`docs/adr/005-agent-control-plane-and-collaboration.md`](./docs/adr/005-agent-control-plane-and-collaboration.md)
 
 最终检查：
 

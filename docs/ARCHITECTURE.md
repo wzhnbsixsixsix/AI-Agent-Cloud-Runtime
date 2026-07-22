@@ -109,3 +109,34 @@ ADR：[`docs/adr/004-w9-observability.md`](./adr/004-w9-observability.md)
 - ACP frame shape 保持稳定。
 - Tool descriptors 兼容 OpenAI-style function calling。
 - Skill/RAG/Hook 默认可 fail open，服务不可用时回退到上一阶段行为。
+
+## 7. 下一阶段：可管理的协作 Agent 平面
+
+在现有 runtime 之上，下一阶段引入 Web 前端与 Agent Control Plane，让用户能创建、配置和观测多个具备独立工作区的 Agent。该扩展不改变现有 gateway → Redis Stream → worker 的稳定执行链路；它为 Agent 增加持久身份、生命周期和协作路由。
+
+```mermaid
+flowchart LR
+  UI[Web 前端] --> CP[Agent Control Plane]
+  CP --> AM[Agent Manager / Scheduler]
+  AM --> A[Agent A Container + Workspace Volume]
+  AM --> B[Agent B Container + Workspace Volume]
+
+  A -->|gRPC: retrieve| RAG[RAG Service]
+  A -->|ACP: Task / Result| ACP[ACP Collaboration Gateway]
+  ACP --> B
+
+  RAG --> DB[(pgvector / documents)]
+  ACP --> RS[(Redis: tasks / events / state)]
+```
+
+职责边界：
+
+- **Control Plane** 管理 AgentSpec、镜像、角色/模型、资源配额、工具权限及生命周期。
+- **Agent Manager** 创建或停止 Agent 容器，并为每个 Agent 绑定独立的持久 workspace volume。
+- **gRPC** 用于 Agent 调用 RAG、OCR、Search、Memory、SQL 等基础能力服务。
+- **ACP Collaboration Gateway** 用于路由 Agent 间的任务、进度、结果和失败事件；Agent 不直接点对点连接，以便统一鉴权、审计、离线暂存、重试和事件回放。
+- **Redis** 持久化 ACP task/event/state，不以容器内存作为协作消息的唯一副本。
+
+现有 Docker L1 sandbox 是按 run 从预热池临时取得的执行环境。持久 Agent 容器是新增的另一种 sandbox 生命周期：根文件系统保持只读，只有 `/workspace` 使用每 Agent 独立的持久卷；同时继续施加 CPU、内存、PID、网络和 tool allow-list 限制，且不得向 Agent 容器暴露 Docker socket。
+
+ACP 协作负载传递结构化 Task/Result，而不是未经加工的字符串或完整文档。结果应携带 `task_id`、父任务、发送方/接收方、状态、trace、幂等键、置信度与 citations；大体积检索内容通过 artifact ID 引用外部存储。详见 ADR 005。

@@ -123,3 +123,33 @@ C: RESUME { last_seq: 3 }
 | 工程复杂度      | 低（~600 LOC）           | 高（依赖 grpc 生态）        |
 
 > 设计取舍：ACP 用单连接换简单和延迟，多路复用 / 复杂控制面留给 gRPC 内部链路。
+
+## 7. Agent 协作扩展（规划）
+
+ACP v1 当前定义的是 client ↔ gateway 的 Run/Event 流。多 Agent 场景将在保持该语义不变的基础上，增加经 **ACP Collaboration Gateway** 路由的 task/event contract；Agent 之间不直接建立点对点连接。
+
+- **gRPC**：Agent 调用 RAG、OCR、Search、Memory、SQL 等基础能力服务。
+- **ACP**：Agent 投递、订阅和消费协作任务，以及接收任务进度、结果和失败事件。
+- **Redis**：协作任务、状态和事件的持久化与回放来源；容器内存不是可靠消息副本。
+
+协作结果至少应包含下列字段（具体 protobuf/frame 类型在实现阶段确定）：
+
+```json
+{
+  "task_id": "task-001",
+  "parent_task_id": "run-123",
+  "sender_agent_id": "researcher-a",
+  "receiver_agent_id": "writer-b",
+  "type": "knowledge_result",
+  "status": "completed",
+  "trace_id": "trace-456",
+  "idempotency_key": "…",
+  "payload": {
+    "summary": "Transformer 论文发表于 2017 年。",
+    "confidence": 0.93,
+    "citations": [{"source": "Attention Is All You Need", "chunk_id": "…", "score": 0.91}]
+  }
+}
+```
+
+完整检索文本或其他大体积内容使用 artifact ID 引用受控存储，不直接写入 ACP payload。Gateway 负责认证授权、目标路由、离线暂存、幂等去重、重试、审计和基于 sequence 的事件回放。

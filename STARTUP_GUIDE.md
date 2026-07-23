@@ -103,6 +103,27 @@ docker compose --env-file .env -f deploy/docker-compose.yml up -d --build
 
 首次构建会下载 Go、Node、Nginx、Redis、Postgres 和 observability 镜像，因此可能需要几分钟。用下面命令观察状态：
 
+本命令会启动以下 Docker 服务：
+
+| 服务 | 前端测试作用 | 是否为主流程必需 |
+|---|---|---|
+| `web` | 提供 React 前端与 Nginx `/api` 代理，访问 `http://localhost:5173` | 是 |
+| `controlplane` | Web BFF、Agent Registry、Docker Agent/workspace 生命周期、SSE 回放 | 是 |
+| `gateway` | 接收 Control Plane 的 gRPC Run 请求并投递任务 | 是 |
+| `worker` | 调用 GLM、执行 Agent Run、发布流式事件 | 是 |
+| `redis` | Agent task queue、运行事件、history、SSE 回放缓存 | 是 |
+| `postgres` | 保存 AgentSpec、AgentRun 与 RAG 数据 | 是 |
+| `skilld` | 提供动态 Skill 选择 | 是（当前默认启用） |
+| `ragd` | 提供 RAG 查询服务 | 是（服务会启动；RAG 功能可由环境变量关闭） |
+| `hookd` | 提供 Hook 执行服务 | 是（服务会启动；Hook 功能可由环境变量关闭） |
+| `scheduler` | worker 注册、心跳、leader/pick 调度控制面 | 是 |
+| `etcd` | 服务发现与 scheduler leader election | 是 |
+| `otel-collector` | 接收 OpenTelemetry trace | 支撑服务 |
+| `prometheus` | 抓取 metrics | 支撑服务 |
+| `grafana` | 展示指标 dashboard，访问 `http://localhost:3000` | 支撑服务 |
+
+`docker compose ... up -d --build` 会先构建本地镜像 `web`、`controlplane`、`gateway`、`worker`、`scheduler`、`skilld`、`ragd`、`hookd`，再启动以上全部服务。
+
 ```bash
 docker compose --env-file .env -f deploy/docker-compose.yml ps
 ```

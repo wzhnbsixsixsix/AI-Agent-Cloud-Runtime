@@ -2,7 +2,7 @@
 
 这份文档写给：**懂系统设计，但不熟 Go 的人**。
 
-你不需要先理解 Go 代码，也不需要本机安装 Go。推荐路线是用 Docker Compose 把整套系统拉起来，再用一个 Docker 版 `agentctl` 客户端去调用 gateway。
+你不需要先理解 Go 代码，也不需要本机安装 Go。推荐路线是用 Docker Compose 把整套系统拉起来，然后通过 Web 控制台完成 Agent 的创建、运行和观测；CLI 仅用于旧的 runtime 验收场景。
 
 ---
 
@@ -23,19 +23,23 @@ AgentForge 当前是一套云原生多智能体运行时。启动后会有这些
 | `etcd` | 服务发现 + leader election | `2379` | W8 服务注册与 scheduler 选主 |
 | `prometheus` | 指标采集 | `9090` | 抓取各服务 `/metrics` |
 | `grafana` | 可观测 dashboard | `3000` | 展示 AgentForge dashboard |
+| `controlplane` | Web BFF + Agent Manager | `8086` | 管理 Agent 容器/workspace；将 gateway gRPC 流转换为 SSE |
+| `web` | 开发者控制台 | `5173` | React + Vite + Ant Design UI；经同源 `/api` 访问 controlplane |
 | `agentctl` | 客户端 CLI | 无服务端口 | 发起 run/tool/rag 命令 |
 
 核心链路：
 
 ```text
-agentctl
+浏览器
+  -> web
+  -> controlplane
   -> gateway
   -> Redis Stream queue:agent_tasks
   -> worker
   -> LLM / Tool / Skill / RAG
   -> Redis PubSub events:{run_id}
-  -> gateway
-  -> agentctl 流式输出
+  -> controlplane SSE
+  -> 浏览器实时输出
 ```
 
 ---
@@ -64,7 +68,104 @@ docker compose version
 
 ---
 
-## 3. 第一次启动：最稳妥的 Mock 模式
+## 3. 前端完整功能测试（推荐）
+
+本节不需要使用 `agentctl`。它覆盖当前控制台已交付的完整 UI 流程：创建持久 Agent、配置资源/工具策略、启动或停止 Agent、调用 GLM、查看流式输出、查看 run 历史和只读 workspace。
+
+### 3.1 准备智谱 GLM 配置
+
+在项目根目录执行：
+
+```bash
+cp .env.example .env
+```
+
+编辑 `.env`，填入智谱开放平台 API Key；不要将该文件提交到 Git：
+
+```dotenv
+LLM_PROVIDER=openai
+OPENAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+OPENAI_API_KEY=你的智谱_API_KEY
+OPENAI_MODEL=glm-4.7-flash
+OPENAI_MAX_TOKENS=65536
+LLM_THINKING_ENABLED=true
+```
+
+UI 创建的 Agent 统一使用 `glm-4.7-flash`；模型输入框只读，Control Plane 在运行时也会强制使用该模型。`SANDBOX_DRIVER` 保持 `.env.example` 的默认值即可。
+
+### 3.2 启动 Web 与后端服务
+
+确保 Docker Desktop 已启动，然后在项目根目录运行：
+
+```bash
+docker compose --env-file .env -f deploy/docker-compose.yml up -d --build
+```
+
+首次构建会下载 Go、Node、Nginx、Redis、Postgres 和 observability 镜像，因此可能需要几分钟。用下面命令观察状态：
+
+```bash
+docker compose --env-file .env -f deploy/docker-compose.yml ps
+```
+
+至少应看到以下服务为 `running`（Redis/Postgres 通常还会显示 `healthy`）：
+
+```text
+agentforge-web
+agentforge-controlplane
+agentforge-gateway
+agentforge-worker
+agentforge-redis
+agentforge-postgres
+```
+
+若 `controlplane` 创建 Agent 时提示 Docker 不可用，确认 Docker Desktop 正在运行，并检查它拥有宿主机 Docker socket 的访问权限：
+
+```bash
+docker compose --env-file .env -f deploy/docker-compose.yml logs -f controlplane
+```
+
+### 3.3 从浏览器完成 UI 验收
+
+打开：
+
+```text
+http://localhost:5173
+```
+
+按下列顺序操作：
+
+1. 在 **Agents** 页点击 **Create Agent**。
+2. 填写名称、角色和系统提示词；展开 **Advanced configuration** 可设置镜像、CPU、内存、PID、允许的 tools，以及删除 Agent 时 workspace 的保留策略。
+3. 点击 **Create**，等待状态从 `provisioning` 变为 `running`；这会创建带独立 Docker volume 的持久 Agent 容器。
+4. 进入详情页，在 **Run task** 输入任务并点击 **Run**。应依次看到运行状态和 GLM 的流式 token 输出，完成后结果出现在 **Recent runs**。
+5. 打开右侧 **Workspace**。它是只读视图；新 Agent 的 volume 初始通常为空。当前版本不支持在浏览器上传、编辑或删除文件。
+6. 点击 **Stop** 验证 Agent 停止；再点 **Start** 恢复。最后可使用 **Delete** 验证容器删除，workspace 是否保留取决于创建时选择的策略。
+7. 在左侧 **Runs** 页确认可以看到所有 Agent 的运行历史。
+
+### 3.4 前端验收标准
+
+以下结果表示 Web 控制台主流程正常：
+
+- `http://localhost:5173` 显示 Agents 列表，不是空白页。
+- 可以创建并进入一个状态为 `running` 的 Agent。
+- 提交任务后可看到实时输出；刷新或网络短暂重连后，SSE 可从 Redis 保存的事件继续回放。
+- 同一 Agent 已有活跃 run 时，新的 run 会被拒绝，避免并发写入同一 workspace。
+- 可停止、启动、删除 Agent；可在 UI 查看 run 历史和 workspace 文件预览。
+
+以下能力尚未纳入当前 UI 验收：RAG 文档入库/查询、ACP 多 Agent 协作拓扑、workspace 在线写入，以及 CLI 的 tool/pipeline/hook 命令。
+
+### 3.5 前端故障排查
+
+| 现象 | 排查方式 |
+|---|---|
+| 页面空白 | 强制刷新 `Cmd+Shift+R`；查看 `docker compose ... logs web`。本地 Vite 开发时刷新 `http://localhost:5173`。 |
+| 创建 Agent 失败 | `docker compose --env-file .env -f deploy/docker-compose.yml logs -f controlplane`；确认 Docker Desktop 已运行。 |
+| Run 立刻失败或无输出 | 确认 `.env` 中的 `OPENAI_API_KEY` 有效，再查看 `docker compose --env-file .env -f deploy/docker-compose.yml logs -f worker`。 |
+| 前端无法访问 API | 检查 `agentforge-web` 和 `agentforge-controlplane` 是否都为 running；Web 容器会通过 Nginx 将 `/api` 代理给 controlplane。 |
+
+---
+
+## 4. 第一次启动：最稳妥的 Mock 模式
 
 Mock 模式不会调用真实大模型 API，适合先验证系统链路。
 

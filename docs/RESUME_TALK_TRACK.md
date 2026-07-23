@@ -76,3 +76,23 @@ Docker L1 已经足够展示 tool 隔离、资源限制、预热池和 function-
 - “Tempo trace UI。”
 - “未经实测确认的并发数字。”
 - “未经当前报告确认的固定覆盖率。”
+
+## 当前项目进度
+
+- **W1-W10：已完成**。runtime 主链路、ACP/gRPC、Docker L1 sandbox、Skill/RAG、Multi-Agent、Hook、服务发现、调度控制面和可观测性均已交付。
+- **W11：Agent Control Plane + Web Console 已完成代码实现**。新增持久 Agent Registry、Docker workspace volume、Control Plane HTTP/BFF、Redis-backed SSE 回放，以及浏览器端 Agent 创建、生命周期管理、GLM 流式运行、run 历史和只读 workspace 浏览。
+- **模型配置：已统一为智谱 `glm-4.7-flash`**。通过 `.env` 的 `OPENAI_API_KEY`、`OPENAI_BASE_URL` 和 `LLM_THINKING_ENABLED` 配置；Control Plane 运行时强制所有 UI Agent 使用该模型。
+- **当前验收入口：** `docs/FRONTEND_TEST_QUICKSTART.md` 提供不依赖 CLI 的前端完整功能测试步骤。
+
+## 技术栈
+
+| 类别 | 技术 |
+|---|---|
+| 后端与协议 | Go 1.22、gRPC、Protocol Buffers、自研 ACP framed TCP、HTTP REST/SSE |
+| Agent Runtime | Redis Streams、Redis Pub/Sub、mutable history、function calling、Supervisor、Pipeline DAG、context compaction |
+| AI 与上下文 | 智谱 GLM `glm-4.7-flash`（OpenAI-compatible API）、Skill selector、RAG、pgvector、hybrid retrieval、reranker |
+| 数据与基础设施 | Redis 7、PostgreSQL 16 + pgvector、etcd、Docker Engine API、Docker Compose、Nginx |
+| 安全与扩展 | Docker L1 sandbox、resource limits、read-only rootfs、WASM/WASI、wazero Hook、tool allow-list |
+| 可观测性 | OpenTelemetry、Prometheus、Grafana、OTLP Collector、structured logging |
+| 前端 | React 18、Vite、TypeScript、Ant Design、React Router、TanStack Query、EventSource SSE、OpenAPI TypeScript types |
+| 工程化 | Make、Buf、Go test、Vitest、Docker multi-stage build、GitHub |

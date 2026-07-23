@@ -87,7 +87,7 @@ make bench-run
 
 讲解：
 
-> 压测默认使用 mock LLM，这样数字反映 runtime 自身开销，而不是模型 API 的限流、价格或网络抖动。真实 WEEX/OpenAI-compatible key 只用于 smoke test。
+> 压测默认使用 mock LLM，这样数字反映 runtime 自身开销，而不是模型 API 的限流、价格或网络抖动。真实 GLM/OpenAI-compatible key 只用于 smoke test。
 
 收尾一句：
 

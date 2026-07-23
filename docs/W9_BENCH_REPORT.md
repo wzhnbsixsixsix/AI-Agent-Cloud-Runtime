@@ -44,4 +44,4 @@ agentforge_scheduler_live_workers
 ## Notes
 
 - W9 uses `LLM_PROVIDER=mock` for repeatable runtime benchmarks.
-- Real WEEX/OpenAI-compatible smoke tests are useful for integration confidence but should not be mixed with benchmark numbers.
+- Real GLM/OpenAI-compatible smoke tests are useful for integration confidence but should not be mixed with benchmark numbers.

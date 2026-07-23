@@ -92,11 +92,13 @@ func main() {
 	defer rdb.Close()
 
 	provider, err := llm.NewFromConfig(llm.FactoryConfig{
-		Provider:      cfg.LLMProvider,
-		OpenAIBaseURL: cfg.OpenAIBaseURL,
-		OpenAIAPIKey:  cfg.OpenAIAPIKey,
-		OpenAIModel:   cfg.OpenAIModel,
-		OpenAITimeout: cfg.OpenAITimeout,
+		Provider:        cfg.LLMProvider,
+		OpenAIBaseURL:   cfg.OpenAIBaseURL,
+		OpenAIAPIKey:    cfg.OpenAIAPIKey,
+		OpenAIModel:     cfg.OpenAIModel,
+		OpenAIMaxTokens: cfg.OpenAIMaxTokens,
+		ThinkingEnabled: cfg.LLMThinkingEnabled,
+		OpenAITimeout:   cfg.OpenAITimeout,
 	})
 	if err != nil {
 		logger.Error("llm provider init", "err", err)

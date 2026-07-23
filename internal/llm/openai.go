@@ -14,25 +14,34 @@ import (
 
 // OpenAIProvider 调用 OpenAI 兼容 /v1/chat/completions stream=true 接口。
 type OpenAIProvider struct {
-	BaseURL string
-	APIKey  string
-	Model   string
-	Timeout time.Duration
+	BaseURL         string
+	APIKey          string
+	Model           string
+	Timeout         time.Duration
+	MaxTokens       int
+	ThinkingEnabled bool
 
 	httpc *http.Client
 }
 
 // NewOpenAI 构造 provider。timeout<=0 时默认 60s。
 func NewOpenAI(baseURL, apiKey, model string, timeout time.Duration) *OpenAIProvider {
+	return NewOpenAIWithOptions(baseURL, apiKey, model, timeout, 0, false)
+}
+
+// NewOpenAIWithOptions configures OpenAI-compatible providers such as Zhipu GLM.
+func NewOpenAIWithOptions(baseURL, apiKey, model string, timeout time.Duration, maxTokens int, thinkingEnabled bool) *OpenAIProvider {
 	if timeout <= 0 {
 		timeout = 60 * time.Second
 	}
 	return &OpenAIProvider{
-		BaseURL: strings.TrimRight(baseURL, "/"),
-		APIKey:  apiKey,
-		Model:   model,
-		Timeout: timeout,
-		httpc:   &http.Client{Timeout: timeout},
+		BaseURL:         strings.TrimRight(baseURL, "/"),
+		APIKey:          apiKey,
+		Model:           model,
+		Timeout:         timeout,
+		MaxTokens:       maxTokens,
+		ThinkingEnabled: thinkingEnabled,
+		httpc:           &http.Client{Timeout: timeout},
 	}
 }
 
@@ -46,6 +55,11 @@ type openaiChatReq struct {
 	Stream      bool            `json:"stream"`
 	Temperature float32         `json:"temperature,omitempty"`
 	MaxTokens   int             `json:"max_tokens,omitempty"`
+	Thinking    *thinkingConfig `json:"thinking,omitempty"`
+}
+
+type thinkingConfig struct {
+	Type string `json:"type"`
 }
 
 type openaiMessage struct {
@@ -109,13 +123,20 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req Req) (<-chan TokenEvent
 	if model == "" {
 		model = p.Model
 	}
+	maxTokens := req.MaxTokens
+	if maxTokens == 0 {
+		maxTokens = p.MaxTokens
+	}
 	body := openaiChatReq{
 		Model:       model,
 		Messages:    toOpenAIMessages(req.Messages),
 		Tools:       toOpenAITools(req.Tools),
 		Stream:      true,
 		Temperature: req.Temperature,
-		MaxTokens:   req.MaxTokens,
+		MaxTokens:   maxTokens,
+	}
+	if p.ThinkingEnabled {
+		body.Thinking = &thinkingConfig{Type: "enabled"}
 	}
 	buf, err := json.Marshal(body)
 	if err != nil {

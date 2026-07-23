@@ -13,7 +13,7 @@
 - **W6**：新增 `internal/rag`，支持本地文本/Markdown/代码文件切片、确定性 hash embedding、Postgres + pgvector 存储、hybrid query、`agentctl rag ingest/query`，worker 可在 Run 前检索相关 chunk 并以 `<untrusted>` context 注入 LLM。
 - **W7**：新增 `internal/orchestrator`，支持本地 Supervisor subagent、pipeline DAG demo 和 History 自动压缩；`dispatch_subagent` 可作为 LLM tool 暴露，`agentctl pipeline run --file ...` 可运行多 step 编排。
 - **W8**：新增 `skilld` / `ragd` / `hookd` 独立 gRPC 服务、wazero WASI Hook、etcd 服务发现、scheduler Leader/Pick 调度面；外部 `RunAgent`、ACP 和 RAG CLI 保持兼容。
-- **W9**：接入 OpenTelemetry、Prometheus、Grafana、mock RunAgent 压测，并支持 `WEEX_API_KEY` 作为 OpenAI-compatible key fallback。
+- **W9**：接入 OpenTelemetry、Prometheus、Grafana 和 mock RunAgent 压测。
 - **W10**：完成最终交付文档、架构图、ADR、3 分钟 demo 脚本、验收清单、简历话术和企业中台 fork 计划。
 
 ---
@@ -70,6 +70,8 @@ W2 阶段控制面（`gateway↔scheduler`）保持 gRPC，只在外部入口（
 - **scheduler**（W1）：仅做 worker 注册 / 心跳；W8 引入 Raft 后参与任务路由。
 - **worker**：消费 Stream，调 LLM Provider 流式吐 token，写历史并 `PUBLISH` 事件。
 - **agentctl**：cobra CLI，连 gateway 流式打印 token，终态打印 `[DONE] run_id=... trace_id=...`。
+- **controlplane**：Web BFF 与 Agent 生命周期管理器；保存 AgentSpec/Run，管理持久 Docker workspace，并把 gateway gRPC 流转换为浏览器 SSE。
+- **web**：React + Vite + Ant Design 开发者控制台；通过同源 `/api` 访问 controlplane，默认地址为 `http://localhost:5173`。
 
 完整设计见 `PROJECT_DESIGN.md` 第 3、4 章。
 
@@ -86,6 +88,7 @@ AI-Agent-Cloud-Runtime/
 │   ├── skilld/       # W8 Skill 独立服务
 │   ├── ragd/         # W8 RAG 独立服务
 │   ├── hookd/        # W8 Hook 独立服务
+│   ├── controlplane/ # Web BFF + Agent Docker 生命周期
 │   ├── bench/        # W9 mock RunAgent 压测
 │   └── agentctl/     # CLI 客户端
 ├── internal/
@@ -107,6 +110,8 @@ AI-Agent-Cloud-Runtime/
 ├── hooks/            # W8 demo Hook manifest / wasm
 ├── bench/            # ghz/bench 输入示例
 ├── docs/             # W10 架构、ADR、demo、验收、简历话术
+├── web/              # React + Vite + Ant Design 控制台
+├── api/              # Control Plane OpenAPI 契约
 ├── build/Dockerfile  # 多阶段（buf-gen → go-build → distroless）
 ├── deploy/           # docker-compose.yml + observability 配置
 ├── Makefile
@@ -124,7 +129,7 @@ AI-Agent-Cloud-Runtime/
 - 可选（仅本地编译/测试时需要）：
   - **Go 1.22+**
   - **buf** 或直接用 `make proto`（自动起 docker buf 镜像）
-- 一个可用的 **OpenAI 兼容 API key**（OpenAI / DeepSeek / 通义 / Moonshot 都行）
+- 一个智谱开放平台 API key（默认模型为 `glm-4.7-flash`）
 
 ---
 
@@ -133,7 +138,8 @@ AI-Agent-Cloud-Runtime/
 ```bash
 # 1) 准备 env
 cp .env.example .env
-#   编辑 .env，填入 OPENAI_API_KEY，必要时改 OPENAI_BASE_URL / OPENAI_MODEL
+#   编辑 .env，只填入你的智谱 API Key：OPENAI_API_KEY=<your-zhipu-api-key>
+#   默认端点与模型已配置为 GLM：open.bigmodel.cn/api/paas/v4 + glm-4.7-flash
 
 # 2) 一键起服（首次会下载镜像 + 编译）
 make up                    # 等价于 docker compose up -d --build
@@ -192,10 +198,9 @@ make down   # 停服并清理 redis 数据
 | 变量 | 默认 | 说明 |
 |------|------|------|
 | `LLM_PROVIDER` | `openai` | `openai` 或 `mock`（无 key 兜底） |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | 兼容任何 OpenAI 协议端点 |
-| `OPENAI_API_KEY` | _(必填)_ | provider=openai 时优先使用 |
-| `WEEX_API_KEY` | _空_ | `OPENAI_API_KEY` 为空时作为 OpenAI-compatible fallback |
-| `OPENAI_MODEL` | `gpt-4o-mini` | 默认模型 |
+| `OPENAI_BASE_URL` | `https://open.bigmodel.cn/api/paas/v4` | 智谱 GLM OpenAI-compatible 端点 |
+| `OPENAI_API_KEY` | _(必填)_ | 智谱开放平台 API Key |
+| `OPENAI_MODEL` | `glm-4.7-flash` | 统一默认模型 |
 | `WORKER_CONCURRENCY` | `4` | 单 worker 进程内 consumer 数 |
 | `WORKER_REPLICAS` | `1` | docker compose worker 副本数 |
 | `REDIS_ADDR` | `redis:6379` | 容器内地址 |
@@ -289,7 +294,6 @@ make down   # 停服并清理 redis 数据
 - [x] `internal/obs` 接入 OpenTelemetry tracing、Prometheus metrics、metrics HTTP endpoint
 - [x] gateway、worker、scheduler、skilld、ragd、hookd 初始化 telemetry，并覆盖 Run、LLM、Tool、Hook、RAG、Skill、Scheduler、Discovery 指标
 - [x] docker compose 新增 `otel-collector`、`prometheus`、`grafana`，并预置 AgentForge dashboard
-- [x] `WEEX_API_KEY` 可作为 OpenAI-compatible fallback key；`.env` 统一为 Docker/Go dotenv 格式
 - [x] 新增 `bench run-agent`、`make bench-run` 和 [`docs/W9_BENCH_REPORT.md`](./docs/W9_BENCH_REPORT.md)
 
 ### W10 — Final Delivery
@@ -600,11 +604,10 @@ W9 接入 OpenTelemetry、Prometheus 和 Grafana。每个服务都会暴露 `/me
 
 ```bash
 # 项目 .env 使用 Docker/Go dotenv 格式；原 Codex/TOML 配置已备份到 .env.codex.backup
-# WEEX_API_KEY 可作为 OPENAI_API_KEY 的 fallback
-WEEX_API_KEY=...
 LLM_PROVIDER=openai
-OPENAI_BASE_URL=<weex-compatible-url>
-OPENAI_MODEL=<model>
+OPENAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+OPENAI_API_KEY=<your-zhipu-api-key>
+OPENAI_MODEL=glm-4.7-flash
 
 # 可复现压测默认使用 mock LLM
 LLM_PROVIDER=mock HOOK_ENABLED=true RAG_ENABLED=false make up
@@ -615,7 +618,7 @@ LLM_PROVIDER=mock HOOK_ENABLED=true RAG_ENABLED=false make up
 # 运行 RunAgent mock 压测
 make bench-run
 
-# 真实 WEEX/OpenAI-compatible 冒烟测试
+# 真实 GLM/OpenAI-compatible 冒烟测试
 LLM_PROVIDER=openai ./bin/agentctl run --prompt "用一句话介绍 AgentForge"
 ```
 

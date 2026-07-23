@@ -214,7 +214,6 @@ W9 接入：
 - metrics HTTP endpoint
 - Grafana provisioning
 - mock RunAgent bench
-- `WEEX_API_KEY` fallback
 
 指标只使用低基数字段作为 label，例如 `service`、`status`、`kind`、`tool`、`provider`、`event`，不把 prompt、run_id、trace_id 放入 label。
 

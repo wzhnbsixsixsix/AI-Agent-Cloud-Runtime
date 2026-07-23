@@ -17,12 +17,14 @@ import (
 
 // Task 投递给 worker 的任务体。
 type Task struct {
-	RunID   string `json:"run_id"`
-	UserID  string `json:"user_id"`
-	Prompt  string `json:"prompt"`
-	Model   string `json:"model,omitempty"`
-	TraceID string `json:"trace_id"`
-	Attempt int    `json:"attempt,omitempty"`
+	RunID        string `json:"run_id"`
+	UserID       string `json:"user_id"`
+	AgentID      string `json:"agent_id,omitempty"`
+	Prompt       string `json:"prompt"`
+	Model        string `json:"model,omitempty"`
+	SystemPrompt string `json:"system_prompt,omitempty"`
+	TraceID      string `json:"trace_id"`
+	Attempt      int    `json:"attempt,omitempty"`
 }
 
 // StreamQueue 基于 Redis Stream + Consumer Group 的任务队列。

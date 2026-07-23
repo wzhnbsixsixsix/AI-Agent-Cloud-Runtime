@@ -88,12 +88,13 @@ type Worker struct {
 	MaxRetry          int           `env:"WORKER_MAX_RETRY"         envDefault:"3"`
 	SchedulerDial     string        `env:"SCHEDULER_DIAL_ADDR"      envDefault:"scheduler:8081"`
 
-	LLMProvider   string        `env:"LLM_PROVIDER"            envDefault:"openai"`
-	OpenAIBaseURL string        `env:"OPENAI_BASE_URL"         envDefault:"https://api.openai.com/v1"`
-	OpenAIAPIKey  string        `env:"OPENAI_API_KEY"`
-	WEEXAPIKey    string        `env:"WEEX_API_KEY"`
-	OpenAIModel   string        `env:"OPENAI_MODEL"            envDefault:"gpt-4o-mini"`
-	OpenAITimeout time.Duration `env:"OPENAI_TIMEOUT_SECONDS"  envDefault:"60s"`
+	LLMProvider        string        `env:"LLM_PROVIDER"            envDefault:"openai"`
+	OpenAIBaseURL      string        `env:"OPENAI_BASE_URL"         envDefault:"https://open.bigmodel.cn/api/paas/v4"`
+	OpenAIAPIKey       string        `env:"OPENAI_API_KEY"`
+	OpenAIModel        string        `env:"OPENAI_MODEL"            envDefault:"glm-4.7-flash"`
+	OpenAIMaxTokens    int           `env:"OPENAI_MAX_TOKENS"       envDefault:"65536"`
+	LLMThinkingEnabled bool          `env:"LLM_THINKING_ENABLED"    envDefault:"true"`
+	OpenAITimeout      time.Duration `env:"OPENAI_TIMEOUT_SECONDS"  envDefault:"60s"`
 
 	// ---- W3: Sandbox + Tool ----
 	// SandboxDriver: docker | memory | disabled。disabled 表示不启动 tool consumer。
@@ -149,6 +150,15 @@ type RAG struct {
 	RAGGRPCAddr string `env:"RAG_GRPC_ADDR" envDefault:":8085"`
 }
 
+// ControlPlane 是 Web 控制台的 HTTP/BFF 配置。浏览器只访问该服务。
+type ControlPlane struct {
+	Common
+	HTTPAddr          string `env:"CONTROLPLANE_HTTP_ADDR" envDefault:":8086"`
+	GatewayDial       string `env:"GATEWAY_DIAL_ADDR" envDefault:"gateway:8080"`
+	AgentDefaultImage string `env:"AGENT_DEFAULT_IMAGE" envDefault:"alpine:3.19"`
+	WebDistDir        string `env:"WEB_DIST_DIR" envDefault:"/web"`
+}
+
 // LoadGateway 读取 Gateway 配置；缺失必填项 panic。
 func LoadGateway() (*Gateway, error) {
 	c := &Gateway{}
@@ -173,11 +183,8 @@ func LoadWorker() (*Worker, error) {
 	if err := env.Parse(c); err != nil {
 		return nil, fmt.Errorf("parse worker env: %w", err)
 	}
-	if c.OpenAIAPIKey == "" && c.WEEXAPIKey != "" {
-		c.OpenAIAPIKey = c.WEEXAPIKey
-	}
 	if c.LLMProvider == "openai" && c.OpenAIAPIKey == "" {
-		return nil, fmt.Errorf("OPENAI_API_KEY or WEEX_API_KEY is required when LLM_PROVIDER=openai")
+		return nil, fmt.Errorf("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
 	}
 	if c.Concurrency <= 0 {
 		c.Concurrency = 1
@@ -214,6 +221,17 @@ func LoadRAG() (*RAG, error) {
 	c := &RAG{}
 	if err := env.Parse(c); err != nil {
 		return nil, fmt.Errorf("parse rag env: %w", err)
+	}
+	return c, nil
+}
+
+func LoadControlPlane() (*ControlPlane, error) {
+	c := &ControlPlane{}
+	if err := env.Parse(c); err != nil {
+		return nil, fmt.Errorf("parse controlplane env: %w", err)
+	}
+	if c.PostgresDSN == "" {
+		return nil, fmt.Errorf("POSTGRES_DSN is required for controlplane")
 	}
 	return c, nil
 }

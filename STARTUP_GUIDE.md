@@ -976,17 +976,16 @@ KEY=value
 .env.codex.backup
 ```
 
-WEEX 的 key 可以这样配：
+智谱 GLM 的 key 可以这样配：
 
 ```dotenv
 LLM_PROVIDER=openai
-OPENAI_BASE_URL=<weex-compatible-url>
-OPENAI_API_KEY=
-WEEX_API_KEY=你的 key
-OPENAI_MODEL=你的模型
+OPENAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+OPENAI_API_KEY=你的智谱 API Key
+OPENAI_MODEL=glm-4.7-flash
 ```
 
-规则是：`OPENAI_API_KEY` 为空但 `WEEX_API_KEY` 不为空时，worker 自动使用 `WEEX_API_KEY`。
+`OPENAI_API_KEY` 是唯一的模型服务密钥配置。
 
 ### 16.2 启动可观测栈
 
@@ -1034,7 +1033,7 @@ BENCH_TOTAL=500 BENCH_CONCURRENCY=32 make bench-run
 docs/W9_BENCH_REPORT.md
 ```
 
-### 16.4 真实 WEEX 冒烟测试
+### 16.4 真实 GLM 冒烟测试
 
 真实 key 不建议用于基准压测，但可以做一次链路冒烟：
 

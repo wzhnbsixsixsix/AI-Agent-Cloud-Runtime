@@ -3,7 +3,7 @@ SHELL := /usr/bin/env bash
 
 MODULE     := github.com/wzhnbsixsixsix/agentforge
 BIN_DIR    := bin
-BINARIES   := gateway scheduler worker skilld ragd hookd agentctl bench
+BINARIES   := gateway scheduler worker skilld ragd hookd controlplane agentctl bench
 GOFLAGS    := -trimpath
 LDFLAGS    := -s -w
 GO_CACHE_DIR ?= $(CURDIR)/.cache/go-build

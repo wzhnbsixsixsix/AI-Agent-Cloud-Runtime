@@ -106,9 +106,13 @@ func (r *Runner) Run(ctx context.Context, t queue.Task) (runErr error) {
 		cur = StateRunning
 	}
 	msgs := make([]llm.Message, 0, len(prior)+2)
+	systemPrompt := t.SystemPrompt
+	if strings.TrimSpace(systemPrompt) == "" {
+		systemPrompt = "You are AgentForge runtime, a helpful assistant. Answer concisely."
+	}
 	msgs = append(msgs, llm.Message{
 		Role:    llm.RoleSystem,
-		Content: "You are AgentForge runtime, a helpful assistant. Answer concisely.",
+		Content: systemPrompt,
 	})
 	if r.SkillSelector != nil {
 		selectStart := time.Now()

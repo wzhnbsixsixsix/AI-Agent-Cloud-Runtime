@@ -55,6 +55,10 @@ message RunRequest {
   string model = 4;
   // gateway 生成，贯穿全链路。
   string trace_id = 5;
+  // 可选：由 Control Plane 创建的持久 Agent 身份。旧客户端保持为空。
+  string agent_id = 6;
+  // 可选：Control Plane 根据 AgentSpec 注入的角色/system prompt。
+  string system_prompt = 7;
 }
 
 message RunEvent {

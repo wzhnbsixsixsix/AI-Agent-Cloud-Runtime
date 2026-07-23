@@ -1,0 +1,16 @@
+openapi: 3.0.3
+info: { title: AgentForge Control Plane API, version: 1.0.0 }
+paths:
+  /api/v1/agents:
+    get: { summary: List Agents, responses: { '200': { description: Agents, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Agent' } } } } } }
+    post: { summary: Create Agent, requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateAgentInput' } } } }, responses: { '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Agent' } } } } } }
+  /api/v1/agents/{id}: { get: { summary: Get Agent, parameters: [{ $ref: '#/components/parameters/AgentID' }], responses: { '200': { description: Agent, content: { application/json: { schema: { $ref: '#/components/schemas/Agent' } } } } } } }
+  /api/v1/agents/{id}/runs:
+    get: { summary: List Agent runs, parameters: [{ $ref: '#/components/parameters/AgentID' }], responses: { '200': { description: Runs } } }
+    post: { summary: Start Agent run, parameters: [{ $ref: '#/components/parameters/AgentID' }], responses: { '202': { description: Started } } }
+  /api/v1/runs/{runId}/events: { get: { summary: Stream Run events, parameters: [{ name: runId, in: path, required: true, schema: { type: string } }], responses: { '200': { description: SSE stream, content: { text/event-stream: {} } } } } }
+components:
+  parameters: { AgentID: { name: id, in: path, required: true, schema: { type: string } } }
+  schemas:
+    Agent: { type: object, required: [id,name,role,status], properties: { id: {type: string}, name: {type: string}, role: {type: string}, status: {type: string} } }
+    CreateAgentInput: { type: object, required: [name,role], properties: { name: {type: string}, role: {type: string}, systemPrompt: {type: string}, model: {type: string} } }

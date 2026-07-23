@@ -30,3 +30,8 @@ coverage.txt
 
 # Proto 生成产物（由 make proto / Dockerfile 生成）
 /pkg/proto/gen/
+/web/node_modules/
+/web/dist/
+/web/*.tsbuildinfo
+/web/vite.config.js
+/web/vite.config.d.ts

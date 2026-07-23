@@ -178,11 +178,13 @@ func (s *agentService) RunAgent(stream pb.AgentService_RunAgentServer) (runErr e
 	defer evCancel()
 
 	if _, err := s.q.Publish(ctx, queue.Task{
-		RunID:   runID,
-		UserID:  first.GetUserId(),
-		Prompt:  first.GetPrompt(),
-		Model:   first.GetModel(),
-		TraceID: traceID,
+		RunID:        runID,
+		UserID:       first.GetUserId(),
+		AgentID:      first.GetAgentId(),
+		Prompt:       first.GetPrompt(),
+		Model:        first.GetModel(),
+		SystemPrompt: first.GetSystemPrompt(),
+		TraceID:      traceID,
 	}); err != nil {
 		return status.Errorf(codes.Internal, "publish task: %v", err)
 	}

@@ -4,8 +4,17 @@
 #   Stage 2: 用 golang 镜像 go mod tidy + go build
 #   Stage 3: distroless 运行时
 
+# ---------------- proto tools ----------------
+# `buf.gen.yaml` uses local Go plugins. The upstream buf image only provides
+# the buf CLI, so build the two generators explicitly before running buf.
+FROM golang:1.22-alpine AS proto-tools
+RUN GOBIN=/out go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.34.2 \
+    && GOBIN=/out go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
+
 # ---------------- proto-gen ----------------
 FROM bufbuild/buf:1.45.0 AS bufgen
+COPY --from=proto-tools /out/protoc-gen-go /usr/local/bin/protoc-gen-go
+COPY --from=proto-tools /out/protoc-gen-go-grpc /usr/local/bin/protoc-gen-go-grpc
 WORKDIR /src
 COPY buf.yaml buf.gen.yaml ./
 COPY pkg/proto ./pkg/proto

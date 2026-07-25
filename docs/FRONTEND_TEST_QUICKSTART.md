@@ -29,6 +29,14 @@
 
    ```bash
    docker compose --env-file .env -f deploy/docker-compose.yml up -d --build
+   
+   
+   #正常启动
+   BUILDX_BUILDER=desktop-linux docker compose --env-file .env -f deploy/docker-compose.yml up -d --build
+   
+   #不含观测(跳过 Grafana、Prometheus、OTel Collector)
+   BUILDX_BUILDER=desktop-linux docker compose --env-file .env -f deploy/docker-compose.yml up -d --build redis postgres etcd skilld ragd hookd gateway scheduler worker controlplane web
+   
    ```
 
 6. 等待并检查服务状态：

@@ -14,6 +14,7 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/errdefs"
 )
 
 type DockerManager struct{ cli *client.Client }
@@ -27,6 +28,9 @@ func NewDockerManager() (*DockerManager, error) {
 }
 func (m *DockerManager) Close() error { return m.cli.Close() }
 func (m *DockerManager) Create(ctx context.Context, a AgentSpec) (string, error) {
+	if err := m.ensureImage(ctx, a.Image); err != nil {
+		return "", err
+	}
 	if _, err := m.cli.VolumeCreate(ctx, volume.CreateOptions{Name: a.VolumeName, Labels: map[string]string{"agentforge.agent_id": a.ID}}); err != nil {
 		return "", fmt.Errorf("create workspace volume: %w", err)
 	}
@@ -39,6 +43,27 @@ func (m *DockerManager) Create(ctx context.Context, a AgentSpec) (string, error)
 		return "", err
 	}
 	return resp.ID, nil
+}
+
+// ensureImage keeps the browser API independent of the Docker host's local
+// image cache. Persistent Agents are allowed to use only the configured base
+// image, which is pulled on first use when necessary.
+func (m *DockerManager) ensureImage(ctx context.Context, ref string) error {
+	if _, _, err := m.cli.ImageInspectWithRaw(ctx, ref); err == nil {
+		return nil
+	} else if !errdefs.IsNotFound(err) {
+		return fmt.Errorf("inspect agent image: %w", err)
+	}
+
+	rc, err := m.cli.ImagePull(ctx, ref, types.ImagePullOptions{})
+	if err != nil {
+		return fmt.Errorf("pull agent image %q: %w", ref, err)
+	}
+	defer rc.Close()
+	if _, err := io.Copy(io.Discard, rc); err != nil {
+		return fmt.Errorf("download agent image %q: %w", ref, err)
+	}
+	return nil
 }
 func (m *DockerManager) Start(ctx context.Context, id string) error {
 	return m.cli.ContainerStart(ctx, id, types.ContainerStartOptions{})

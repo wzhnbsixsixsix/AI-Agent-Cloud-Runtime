@@ -1,6 +1,6 @@
 # AgentForge — 云原生 AI Agent Runtime 设计文档
 
-> **当前状态：W10 完成。**
+> **当前状态：W1-W10 Runtime 完成；W11 Web Agent Control Plane 已实现并完成端到端启动验证。**
 >
 > AgentForge 是一个用 Go 实现的 AI Agent 运行时作品集项目。它重点展示：流式执行、沙箱工具调用、动态上下文装配、多 Agent 编排、Hook 扩展、服务发现、可观测性和可复现压测。
 
@@ -16,6 +16,7 @@ AgentForge 不是一个单点聊天机器人，而是一个“让 Agent 像后�
 
 主仓库只做通用 runtime：
 
+- 管理入口：React Dashboard、Control Plane HTTP/BFF、Agent Registry
 - 稳定入口：`RunAgent` gRPC、ACP framed stream、`agentctl run`
 - 执行链路：gateway、Redis Stream、worker、LLM provider、history
 - 工具隔离：Docker L1 sandbox、内置 bash/fs/http tools
@@ -33,6 +34,9 @@ AgentForge 不是一个单点聊天机器人，而是一个“让 Agent 像后�
 
 ```mermaid
 flowchart LR
+  Browser[Web Dashboard] -->|HTTP / SSE| ControlPlane[controlplane]
+  ControlPlane -->|gRPC RunAgent| Gateway
+  ControlPlane -->|Docker API| PersistentAgent[Persistent Agent + Workspace]
   Agentctl[agentctl] -->|gRPC RunAgent| Gateway[gateway]
   Agentctl -->|ACP TCP frames| Gateway
   Gateway -->|XADD queue:agent_tasks| Redis[(Redis)]
@@ -50,7 +54,7 @@ flowchart LR
   Hookd --> Etcd
   Worker --> Etcd
   Gateway --> Etcd
-  Services[gateway / worker / scheduler / skilld / ragd / hookd] --> Prom[Prometheus]
+  Services[controlplane / gateway / worker / scheduler / skilld / ragd / hookd] --> Prom[Prometheus]
   Services --> OTel[OpenTelemetry Collector]
   Prom --> Grafana[Grafana]
 ```
@@ -221,17 +225,28 @@ Loki/Tempo 暂未引入；Grafana W10 主要展示 Prometheus dashboard。性能
 
 ADR：[`docs/adr/004-w9-observability.md`](./docs/adr/004-w9-observability.md)
 
-### 4.10 Agent Control Plane + Collaboration（规划）
+### 4.10 Web Agent Control Plane（已实现）
 
-下一阶段在 runtime 上增加 Web 前端、Agent Control Plane 和 ACP Collaboration Gateway：
+W11 在现有 runtime 上增加了浏览器管理面：
 
-- 前端可创建 Agent，并配置角色、模型、镜像、工具权限、资源额度和 workspace 策略。
-- Agent Manager 为每个 Agent 管理持久容器和独立 workspace volume；这不同于现有按 run 分配的 Docker L1 预热 sandbox。
-- Agent 经 gRPC 调用 RAG、Skill、Hook 及未来的 OCR/Search/Memory/SQL 等能力服务。
-- Agent 经 ACP 向 Collaboration Gateway 投递结构化任务和结果；Gateway 使用 Redis 持久化任务、状态和事件，再路由到目标 Agent。
-- Agent A 可以检索并总结知识，再把附带 citations 和 confidence 的结果发给 Agent B；B 能复用成果，也能按 citation 做复核，避免重复 embedding、检索和 rerank。
+- React Dashboard 可创建 Agent，并配置角色、系统提示词、镜像、工具权限、资源额度和 workspace 策略。
+- Control Plane 提供 HTTP/BFF、Agent Registry、AgentRun 存储和 Redis-backed SSE 回放。
+- Agent Manager 为每个 Agent 管理持久容器和独立 workspace volume；这不同于按 run 分配的 Docker L1 预热 sandbox。
+- Control Plane 通过稳定的 `RunAgent` gRPC 调用 Gateway，不要求浏览器访问内部 gRPC、Redis 或 Docker。
+- 持久 Agent 和临时 Sandbox 均保持 `network=none`；RAG、Skill、Hook 和 LLM 调用由可信 gateway/worker 链路完成。
 
-该阶段保持现有 `RunAgent` 和 ACP v1 兼容：协作能力以新 task/event contract 增量加入，不改变已有 Run/Event 帧语义。完整边界见 [`docs/adr/005-agent-control-plane-and-collaboration.md`](./docs/adr/005-agent-control-plane-and-collaboration.md)。
+当前实现的网络与寻址见 [`docs/CONTAINER_NETWORKING.md`](./docs/CONTAINER_NETWORKING.md)。
+
+### 4.11 ACP Agent Collaboration（规划）
+
+下一阶段计划增加 ACP Collaboration Gateway：
+
+- Agent 通过结构化 ACP Task/Result/Progress/Failure 共享加工后的知识和任务结果。
+- Collaboration Gateway 负责鉴权、幂等、重试、离线暂存、事件回放和目标路由。
+- Redis 保存协作任务、状态和事件；大载荷通过 artifact ID 引用受控存储。
+- Agent A 可将带 citations/confidence 的 RAG 总结发送给 Agent B，避免重复检索。
+
+该规划保持现有 `RunAgent` 和 ACP v1 兼容，不改变已有 Run/Event 帧语义。完整边界见 [`docs/adr/005-agent-control-plane-and-collaboration.md`](./docs/adr/005-agent-control-plane-and-collaboration.md)。
 
 ---
 
@@ -249,11 +264,16 @@ ADR：[`docs/adr/004-w9-observability.md`](./docs/adr/004-w9-observability.md)
 | W8 | Hook + 拆服务 | skilld/ragd/hookd、wazero hook、etcd election、Pick/Leader | ✅ 完成 |
 | W9 | 可观测 + 压测 | OTel、Prometheus、Grafana、mock RunAgent bench | ✅ 完成 |
 | W10 | 打磨 + 交付 | README、启动文档、架构图、ADR、demo 脚本、简历话术、验收清单 | ✅ 完成 |
+| W11 | Web Agent Control Plane | Dashboard、Agent Registry、持久容器/workspace、HTTP/SSE | ✅ 完成 |
 
 ---
 
-## 6. W10 交付材料
+## 6. 交付与文档入口
 
+- 文档总索引：[`docs/README.md`](./docs/README.md)
+- Dashboard 启动指南：[`STARTUP_GUIDE.md`](./STARTUP_GUIDE.md)
+- 容器通信：[`docs/CONTAINER_NETWORKING.md`](./docs/CONTAINER_NETWORKING.md)
+- CLI Runtime 手册：[`docs/CLI_RUNTIME_GUIDE.md`](./docs/CLI_RUNTIME_GUIDE.md)
 - 一页式交付说明：[`docs/FINAL_DELIVERY.md`](./docs/FINAL_DELIVERY.md)
 - 最终验收清单：[`docs/ACCEPTANCE_CHECKLIST.md`](./docs/ACCEPTANCE_CHECKLIST.md)
 - 架构图：[`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)
@@ -336,4 +356,4 @@ AgentForge — Go 云原生 AI Agent Runtime
 
 ## 9. 一句话总结
 
-AgentForge 的重点不是“做一个会聊天的应用”，而是把 Agent 运行时拆成后端工程可以理解和运维的几个面：协议入口、异步队列、隔离执行、动态上下文、Agent 编排、Hook 扩展、调度控制面和可观测性。W10 的交付目标就是让这套设计能跑、能讲、能验收、能放进作品集。
+AgentForge 的重点不是“做一个会聊天的应用”，而是把 Agent 运行时拆成后端工程可以理解和运维的几个面：Web 管理入口、协议入口、异步队列、隔离执行、动态上下文、Agent 编排、Hook 扩展、调度控制面和可观测性。当前 W1–W11 能跑、能讲、能验收，也清楚区分已实现的 Control Plane 与规划中的 Agent-to-Agent ACP Collaboration。

@@ -4,6 +4,8 @@
 
 ## 录制前准备
 
+Dashboard 演示按 [`STARTUP_GUIDE.md`](../STARTUP_GUIDE.md) 启动；CLI 演示命令见 [`CLI_RUNTIME_GUIDE.md`](./CLI_RUNTIME_GUIDE.md)。
+
 ```bash
 make final-check
 LLM_PROVIDER=mock HOOK_ENABLED=true RAG_ENABLED=true make up
@@ -22,7 +24,7 @@ LLM_PROVIDER=mock HOOK_ENABLED=true RAG_ENABLED=true make up
 
 画面展示：
 
-- README 顶部 W10 状态
+- Web Dashboard 的 Agents 页面
 - `docs/ARCHITECTURE.md` 架构图
 
 ## 0:25-0:55 — 基础 Run
@@ -91,4 +93,4 @@ make bench-run
 
 收尾一句：
 
-> 这个项目的核心设计取舍是：每一周都增加 runtime 能力，但不破坏 `RunAgent`、ACP 和 Tool 的公共契约。
+> 这个项目的核心设计取舍是：Web Control Plane 负责 Agent 生命周期和 Dashboard API，Gateway/Worker 负责运行时执行；每一阶段都增加 runtime 能力，但不破坏 `RunAgent`、ACP 和 Tool 的公共契约。Agent-to-Agent ACP Collaboration 是后续设计，不冒充当前交付。

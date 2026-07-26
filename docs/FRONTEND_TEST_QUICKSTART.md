@@ -1,84 +1,108 @@
-# 前端功能测试：一键启动
+# Dashboard 前端测试：一页启动
 
-1. 前置要求：Docker Desktop 已启动；已安装 Docker Compose v2；已准备智谱 API Key。
+## 1. 前置要求
 
-2. 进入项目目录：
+- Docker Desktop 已启动。
+- Docker Compose v2 已安装。
+- 已准备智谱 API Key。
 
-   ```bash
-   cd "/Users/Thomas/Desktop/AI Cloud Runtime Project/AI-Agent-Cloud-Runtime"
-   ```
+## 2. 首次准备
 
-3. 首次创建环境文件：
+```bash
+cd "/Users/Thomas/Desktop/AI Cloud Runtime Project/AI-Agent-Cloud-Runtime"
+test -f .env || cp .env.example .env
+```
 
-   ```bash
-   test -f .env || cp .env.example .env
-   ```
+在 `.env` 中确认：
 
-4. 编辑 `.env`，仅确认或填写以下配置：
+```dotenv
+LLM_PROVIDER=openai
+OPENAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+OPENAI_API_KEY=你的智谱_API_KEY
+OPENAI_MODEL=glm-4.7-flash
+OPENAI_MAX_TOKENS=65536
+LLM_THINKING_ENABLED=true
+OPENAI_TIMEOUT_SECONDS=60s
+WORKER_HEARTBEAT_SECONDS=5s
+```
 
-   ```dotenv
-   LLM_PROVIDER=openai
-   OPENAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
-   OPENAI_API_KEY=你的智谱_API_KEY
-   OPENAI_MODEL=glm-4.7-flash
-   OPENAI_MAX_TOKENS=65536
-   LLM_THINKING_ENABLED=true
-   ```
+Apple Silicon 首次或 Docker Desktop 清理数据后执行一次：
 
-5. 一键构建并启动所有服务：
+```bash
+docker context use desktop-linux
+docker buildx use desktop-linux
+```
 
-   ```bash
-   docker compose --env-file .env -f deploy/docker-compose.yml up -d --build
-   
-   
-   # Apple Silicon：首次或 Docker Desktop 重置后执行一次
-   docker context use desktop-linux
-   docker buildx use desktop-linux
+## 3. 完整启动
 
-   # 完整启动（已在 2026-07-26 验证）
-   DOCKER_DEFAULT_PLATFORM=linux/arm64 docker compose --env-file .env -f deploy/docker-compose.yml up -d --build
+Apple Silicon：
 
-   
-   #不含观测(跳过 Grafana、Prometheus、OTel Collector)
-   BUILDX_BUILDER=desktop-linux docker compose --env-file .env -f deploy/docker-compose.yml up -d --build redis postgres etcd skilld ragd hookd gateway scheduler worker controlplane web
-   
-   ```
+```bash
+DOCKER_DEFAULT_PLATFORM=linux/arm64 docker compose \
+  --env-file .env \
+  -f deploy/docker-compose.yml \
+  up -d --build
+```
 
-6. 等待并检查服务状态：
+其他平台：
 
-   ```bash
-   docker compose --env-file .env -f deploy/docker-compose.yml ps
-   ```
+```bash
+docker compose --env-file .env -f deploy/docker-compose.yml up -d --build
+```
 
-   ```text
-   需要 running：agentforge-web、agentforge-controlplane、agentforge-gateway、agentforge-worker
-   需要 healthy：agentforge-redis、agentforge-postgres
-   ```
+## 4. 只重建 Web
 
-7. 打开前端：
+```bash
+DOCKER_DEFAULT_PLATFORM=linux/arm64 docker compose \
+  --env-file .env \
+  -f deploy/docker-compose.yml \
+  up -d --build --no-deps web
+```
 
-   ```text
-   http://localhost:5173
-   ```
+## 5. 状态检查
 
-8. 前端测试顺序：
+```bash
+docker compose --env-file .env -f deploy/docker-compose.yml ps
+```
 
-   ```text
-   Agents → Create Agent → 填写名称/角色/系统提示词 → Create
-   Agent Detail → Run task → 输入任务 → Run
-   Agent Detail → Stop → Start → Delete
-   Runs → 查看运行历史
-   Workspace → 查看只读文件目录
-   ```
+需要 running：
 
-9. 故障日志：
+```text
+agentforge-web
+agentforge-controlplane
+agentforge-gateway
+agentforge-worker-1
+```
 
-   ```bash
-   docker compose --env-file .env -f deploy/docker-compose.yml logs -f web controlplane worker
-   ```
+需要 healthy：
 
-10. 停止服务：
+```text
+agentforge-redis
+agentforge-postgres
+```
 
-    ```bash
-    docker compose --env-file .env -f deploy/docker-compose.yml down
-    ```
+## 6. 前端验收
+
+打开 `http://localhost:5173`：
+
+```text
+Agents → Create Agent → 填写配置 → Create
+Agent Detail → Run task → 输入任务 → Run
+Agent Detail → Workspace → 查看只读文件
+Agent Detail → Stop → Start → Delete
+Runs → 查看全局运行历史
+使用指南 → 查看 Dashboard 能力和边界
+```
+
+## 7. 日志与停止
+
+```bash
+docker compose --env-file .env -f deploy/docker-compose.yml \
+  logs -f web controlplane gateway worker
+```
+
+```bash
+docker compose --env-file .env -f deploy/docker-compose.yml down
+```
+
+详细启动与故障排查见 [`STARTUP_GUIDE.md`](../STARTUP_GUIDE.md)，容器通信见 [`CONTAINER_NETWORKING.md`](./CONTAINER_NETWORKING.md)。

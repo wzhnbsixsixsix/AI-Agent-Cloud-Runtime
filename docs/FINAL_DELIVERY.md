@@ -6,6 +6,7 @@ AgentForge 是一个云原生 AI Agent Runtime。它不是单个聊天机器人�
 
 ## 已交付能力
 
+- **Web Control Plane**：React Dashboard、Agent Registry、持久 Agent 容器与 workspace、生命周期管理、Run/SSE 回放和只读文件浏览。
 - **执行链路**：`agentctl -> gateway -> Redis Stream -> worker -> LLM`，支持流式 token 和 history 持久化。
 - **ACP 协议**：在 gRPC 旁边提供自研 TCP framed stream，并支持 resume。
 - **Sandbox Tool**：Docker L1 sandbox 预热池，内置 bash、文件、HTTP 工具和 function-calling loop。
@@ -16,8 +17,19 @@ AgentForge 是一个云原生 AI Agent Runtime。它不是单个聊天机器人�
 
 ## 快速命令
 
+新用户默认从 Dashboard 开始：
+
 ```bash
 cp .env.example .env
+DOCKER_DEFAULT_PLATFORM=linux/arm64 \
+  docker compose --env-file .env -f deploy/docker-compose.yml up -d --build
+```
+
+浏览器打开 `http://localhost:5173`。完整步骤见 [`STARTUP_GUIDE.md`](../STARTUP_GUIDE.md)。
+
+CLI Runtime 验证：
+
+```bash
 make proto
 make build
 make up
@@ -39,9 +51,12 @@ make bench-run
 
 ## 演示入口
 
-- 小白启动文档：[`STARTUP_GUIDE.md`](../STARTUP_GUIDE.md)
-- 架构图：[`docs/ARCHITECTURE.md`](./ARCHITECTURE.md)
-- 3 分钟 demo 脚本：[`docs/DEMO_SCRIPT.md`](./DEMO_SCRIPT.md)
+- 文档总索引：[`docs/README.md`](./README.md)
+- Dashboard 启动：[`STARTUP_GUIDE.md`](../STARTUP_GUIDE.md)
+- CLI Runtime 手册：[`docs/CLI_RUNTIME_GUIDE.md`](./CLI_RUNTIME_GUIDE.md)
+- 当前架构：[`docs/ARCHITECTURE.md`](./ARCHITECTURE.md)
+- 容器通信：[`docs/CONTAINER_NETWORKING.md`](./CONTAINER_NETWORKING.md)
+- 3 分钟 Demo：[`docs/DEMO_SCRIPT.md`](./DEMO_SCRIPT.md)
 - 最终验收清单：[`docs/ACCEPTANCE_CHECKLIST.md`](./ACCEPTANCE_CHECKLIST.md)
 - 简历与面试话术：[`docs/RESUME_TALK_TRACK.md`](./RESUME_TALK_TRACK.md)
 - W9 压测报告模板：[`docs/W9_BENCH_REPORT.md`](./W9_BENCH_REPORT.md)
@@ -50,6 +65,7 @@ make bench-run
 
 已实现并可 demo：
 
+- Web Console、Control Plane、Agent Registry、持久容器/workspace 和 Run SSE
 - Docker L1 sandbox
 - ACP/gRPC 双入口
 - Skill、RAG、Multi-Agent、context compaction
@@ -58,6 +74,7 @@ make bench-run
 
 已设计但未在 mainline 实现：
 
+- Agent-to-Agent ACP Task/Result Collaboration Gateway
 - gVisor、Firecracker、eBPF syscall audit、CRIU checkpoint restore
 - Loki、Tempo
 - worker-specific queue sharding

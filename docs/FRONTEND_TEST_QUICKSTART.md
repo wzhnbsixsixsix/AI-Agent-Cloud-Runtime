@@ -31,8 +31,13 @@
    docker compose --env-file .env -f deploy/docker-compose.yml up -d --build
    
    
-   #正常启动
-   BUILDX_BUILDER=desktop-linux docker compose --env-file .env -f deploy/docker-compose.yml up -d --build
+   # Apple Silicon：首次或 Docker Desktop 重置后执行一次
+   docker context use desktop-linux
+   docker buildx use desktop-linux
+
+   # 完整启动（已在 2026-07-26 验证）
+   DOCKER_DEFAULT_PLATFORM=linux/arm64 docker compose --env-file .env -f deploy/docker-compose.yml up -d --build
+
    
    #不含观测(跳过 Grafana、Prometheus、OTel Collector)
    BUILDX_BUILDER=desktop-linux docker compose --env-file .env -f deploy/docker-compose.yml up -d --build redis postgres etcd skilld ragd hookd gateway scheduler worker controlplane web

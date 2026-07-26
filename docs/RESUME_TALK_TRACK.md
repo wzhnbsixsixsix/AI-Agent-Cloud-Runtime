@@ -83,6 +83,7 @@ Docker L1 已经足够展示 tool 隔离、资源限制、预热池和 function-
 - **W11：Agent Control Plane + Web Console 已完成代码实现**。新增持久 Agent Registry、Docker workspace volume、Control Plane HTTP/BFF、Redis-backed SSE 回放，以及浏览器端 Agent 创建、生命周期管理、GLM 流式运行、run 历史和只读 workspace 浏览。
 - **模型配置：已统一为智谱 `glm-4.7-flash`**。通过 `.env` 的 `OPENAI_API_KEY`、`OPENAI_BASE_URL` 和 `LLM_THINKING_ENABLED` 配置；Control Plane 运行时强制所有 UI Agent 使用该模型。
 - **当前验收入口：** `docs/FRONTEND_TEST_QUICKSTART.md` 提供不依赖 CLI 的前端完整功能测试步骤。
+- **2026-07-26：前端端到端启动验证成功。** 在 Apple Silicon Docker Desktop 上完成依赖镜像拉取、8 个本地服务镜像构建、Postgres/Redis 健康检查及 Gateway、Worker、Control Plane、Web Console 启动；开发者可通过 `http://localhost:5173` 进入 Agent 管理界面进行完整前端验证。
 
 ## 技术栈
 

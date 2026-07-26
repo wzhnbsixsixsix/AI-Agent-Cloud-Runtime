@@ -41,7 +41,7 @@ flowchart LR
   Agentctl -->|ACP TCP frames| Gateway
   Gateway -->|XADD queue:agent_tasks| Redis[(Redis)]
   Redis -->|XREADGROUP| Worker[worker]
-  Worker -->|stream| LLM[OpenAI-compatible / Mock LLM]
+  Worker -->|按 Agent model 路由| LLM[智谱 GLM / ModelScope Qwen / Mock]
   Worker -->|append/render/fold| History[(Redis History)]
   Worker -->|tool exec| Sandbox[Docker L1 Sandbox]
   Worker --> Skilld[skilld]
@@ -83,7 +83,7 @@ flowchart LR
    - RAG `<untrusted>` chunks
    - Hook-injected system messages
    - rendered history
-7. worker 调用 OpenAI-compatible 或 mock LLM provider。
+7. worker 根据 Agent model 将请求路由到智谱 GLM、ModelScope Qwen 或 mock LLM provider。
 8. 如果模型请求 tool，worker 执行本地 tool loop；PreToolUse/PostToolUse Hook 可 deny、改写、脱敏。
 9. 如果模型请求 `dispatch_subagent`，worker 本地创建 child run，父 run 只记录结构化结果。
 10. history 超阈值时触发 `COMPACTING`，调用 `History.Fold` 折叠旧消息。

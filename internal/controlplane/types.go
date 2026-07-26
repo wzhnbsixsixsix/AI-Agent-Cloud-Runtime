@@ -9,11 +9,12 @@ import (
 )
 
 const (
-	AgentModel         = "glm-4.7-flash"
-	StatusProvisioning = "provisioning"
-	StatusRunning      = "running"
-	StatusStopped      = "stopped"
-	StatusFailed       = "failed"
+	DefaultAgentModel    = "glm-4.7-flash"
+	ModelScopeAgentModel = "Qwen/Qwen3.6-27B"
+	StatusProvisioning   = "provisioning"
+	StatusRunning        = "running"
+	StatusStopped        = "stopped"
+	StatusFailed         = "failed"
 )
 
 type AgentSpec struct {
@@ -71,8 +72,8 @@ func (in CreateAgentInput) Validate(defaultImage string) error {
 	if len(in.SystemPrompt) > 12000 {
 		return errors.New("systemPrompt must not exceed 12000 characters")
 	}
-	if in.Model != "" && in.Model != AgentModel {
-		return fmt.Errorf("only model %q is supported", AgentModel)
+	if in.Model != "" && !isSupportedAgentModel(in.Model) {
+		return fmt.Errorf("unsupported model %q; supported models are %q and %q", in.Model, DefaultAgentModel, ModelScopeAgentModel)
 	}
 	if in.Image != "" && in.Image != defaultImage {
 		return fmt.Errorf("image %q is not allowed", in.Image)
@@ -93,7 +94,7 @@ func normalizeCreate(in CreateAgentInput, defaultImage string) CreateAgentInput 
 		in.Image = defaultImage
 	}
 	if in.Model == "" {
-		in.Model = AgentModel
+		in.Model = DefaultAgentModel
 	}
 	if in.CPUQuotaUS == 0 {
 		in.CPUQuotaUS = 50000
@@ -108,4 +109,8 @@ func normalizeCreate(in CreateAgentInput, defaultImage string) CreateAgentInput 
 		in.WorkspacePolicy = "retain"
 	}
 	return in
+}
+
+func isSupportedAgentModel(model string) bool {
+	return model == DefaultAgentModel || model == ModelScopeAgentModel
 }

@@ -1,0 +1,9 @@
+.git
+.cache
+.env
+.env.*
+bin
+coverage.txt
+web/dist
+web/node_modules
+**/.DS_Store

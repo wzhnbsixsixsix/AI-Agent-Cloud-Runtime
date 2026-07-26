@@ -11,7 +11,7 @@ flowchart LR
   CP -->|"gRPC RunAgent"| GW["gateway :8080"]
   GW -->|"XADD queue:agent_tasks"| Redis[("Redis")]
   Redis -->|"XREADGROUP"| Worker["worker"]
-  Worker -->|"stream chat"| LLM["GLM / Mock"]
+  Worker -->|"按 Agent model 路由"| LLM["智谱 GLM / ModelScope Qwen / Mock"]
   Worker -->|"publish events"| Redis
   Redis -->|"events:{run_id}"| GW
   GW -->|"RunEvent stream"| CP

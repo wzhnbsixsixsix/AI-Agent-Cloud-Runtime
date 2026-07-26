@@ -189,6 +189,18 @@ OPENAI_MAX_TOKENS=65536
 LLM_THINKING_ENABLED=true
 ```
 
+同时启用 ModelScope Qwen 时，使用另一个 token：
+
+```dotenv
+MODELSCOPE_BASE_URL=https://api-inference.modelscope.cn/v1
+MODELSCOPE_ACCESS_TOKEN=你的_ModelScope_Access_Token
+MODELSCOPE_MODEL=Qwen/Qwen3.6-27B
+MODELSCOPE_MAX_TOKENS=0
+MODELSCOPE_TIMEOUT_SECONDS=60s
+```
+
+Dashboard 和携带 `model=Qwen/Qwen3.6-27B` 的 Run 会路由到 ModelScope；其他模型继续使用默认智谱 Provider。
+
 重启服务：
 
 ```bash
@@ -564,7 +576,7 @@ RAG_ENABLED=false
 
 ```dotenv
 LLM_PROVIDER=openai
-OPENAI_API_KEY=sk-your-key
+OPENAI_API_KEY=你的智谱_API_KEY
 SANDBOX_DRIVER=memory
 SKILL_ENABLED=true
 RAG_ENABLED=false
@@ -582,7 +594,8 @@ RAG_ENABLED=false
 
 ```dotenv
 LLM_PROVIDER=openai
-OPENAI_API_KEY=sk-your-key
+OPENAI_API_KEY=你的智谱_API_KEY
+MODELSCOPE_ACCESS_TOKEN=你的_ModelScope_Access_Token
 SANDBOX_DRIVER=docker
 SKILL_ENABLED=true
 RAG_ENABLED=true
@@ -670,8 +683,10 @@ LLM_PROVIDER=mock
 或者填：
 
 ```dotenv
-OPENAI_API_KEY=sk-your-key
+OPENAI_API_KEY=你的智谱_API_KEY
 ```
+
+如果 Agent 选择 `Qwen/Qwen3.6-27B`，还需要填写 `MODELSCOPE_ACCESS_TOKEN`。
 
 ### Q2：`agentctl` 连不上 `localhost:8080`
 
@@ -1003,7 +1018,7 @@ OPENAI_API_KEY=你的智谱 API Key
 OPENAI_MODEL=glm-4.7-flash
 ```
 
-`OPENAI_API_KEY` 是唯一的模型服务密钥配置。
+`OPENAI_API_KEY` 只用于智谱；`MODELSCOPE_ACCESS_TOKEN` 只用于 ModelScope，两者不要混用。
 
 ### 启动可观测栈
 

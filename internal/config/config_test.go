@@ -9,3 +9,16 @@ func TestLoadWorkerRequiresOpenAICompatibleKey(t *testing.T) {
 		t.Fatal("expected missing key error")
 	}
 }
+
+func TestLoadWorkerReadsModelScopeConfig(t *testing.T) {
+	t.Setenv("LLM_PROVIDER", "modelscope")
+	t.Setenv("MODELSCOPE_ACCESS_TOKEN", "modelscope-test-token")
+	t.Setenv("MODELSCOPE_MODEL", "Qwen/Qwen3.6-27B")
+	cfg, err := LoadWorker()
+	if err != nil {
+		t.Fatalf("load worker: %v", err)
+	}
+	if cfg.ModelScopeAccessToken != "modelscope-test-token" || cfg.ModelScopeModel != "Qwen/Qwen3.6-27B" {
+		t.Fatalf("unexpected ModelScope config: %+v", cfg)
+	}
+}

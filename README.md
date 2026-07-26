@@ -6,7 +6,7 @@ AgentForge 是一个用 Go 实现的云原生 AI Agent Runtime。它提供 Web A
 
 - **W1-W10 Runtime：已完成。**
 - **Web Dashboard + Agent Control Plane：已实现并完成本地端到端启动验证。**
-- **模型：统一使用智谱 `glm-4.7-flash`。**
+- **模型：支持智谱 `glm-4.7-flash` 和 ModelScope `Qwen/Qwen3.6-27B`，分别使用独立密钥。**
 - **ACP Agent-to-Agent Collaboration Gateway：设计完成，尚未实现。**
 
 当前 Dashboard 支持：
@@ -27,7 +27,9 @@ flowchart LR
   CP -->|"gRPC"| GW["Gateway"]
   GW -->|"Redis Stream"| Redis[("Redis")]
   Redis --> Worker["Worker"]
-  Worker --> GLM["GLM-4.7-Flash"]
+  Worker --> Router["Model Router"]
+  Router --> GLM["智谱 GLM-4.7-Flash"]
+  Router --> Qwen["ModelScope Qwen3.6-27B"]
   Worker --> Services["Skill / RAG / Hook"]
   Worker --> Sandbox["Docker Sandbox"]
   CP --> Agent["Persistent Agent + Workspace"]
@@ -81,7 +83,7 @@ DOCKER_DEFAULT_PLATFORM=linux/arm64 docker compose \
 | 接入协议 | gRPC `RunAgent`、ACP v1 framed TCP、HTTP REST/SSE |
 | 执行与状态 | Redis Streams、Redis Pub/Sub、mutable history、event replay |
 | Agent 管理 | Agent Registry、持久容器、named workspace volume、生命周期管理 |
-| 模型 | 智谱 GLM OpenAI-compatible API、Mock provider |
+| 模型 | 智谱 GLM、ModelScope Qwen、按 Agent 模型路由、Mock provider |
 | 工具隔离 | Docker L1 sandbox、资源限制、只读 rootfs、tool allow-list |
 | 上下文 | Skill selector、pgvector RAG、history fold、context compaction |
 | 编排 | Supervisor subagent、Pipeline DAG |

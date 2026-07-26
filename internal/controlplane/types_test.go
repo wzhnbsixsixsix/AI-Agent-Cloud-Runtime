@@ -13,6 +13,14 @@ func TestCreateAgentInputValidate(t *testing.T) {
 	if err := (CreateAgentInput{Name: "researcher", Role: "Research", Image: "unknown:latest"}).Validate("alpine:3.19"); err == nil {
 		t.Fatal("expected image rejection")
 	}
+	for _, model := range []string{DefaultAgentModel, ModelScopeAgentModel} {
+		if err := (CreateAgentInput{Name: "researcher", Role: "Research", Model: model}).Validate("alpine:3.19"); err != nil {
+			t.Fatalf("supported model %q rejected: %v", model, err)
+		}
+	}
+	if err := (CreateAgentInput{Name: "researcher", Role: "Research", Model: "unknown/model"}).Validate("alpine:3.19"); err == nil {
+		t.Fatal("expected unsupported model rejection")
+	}
 }
 
 func TestSafeWorkspacePath(t *testing.T) {

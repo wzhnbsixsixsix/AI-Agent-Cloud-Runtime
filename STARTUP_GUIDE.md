@@ -42,9 +42,20 @@ OPENAI_MAX_TOKENS=65536
 LLM_THINKING_ENABLED=true
 OPENAI_TIMEOUT_SECONDS=60s
 WORKER_HEARTBEAT_SECONDS=5s
+
+MODELSCOPE_BASE_URL=https://api-inference.modelscope.cn/v1
+MODELSCOPE_ACCESS_TOKEN=你的_ModelScope_Access_Token
+MODELSCOPE_MODEL=Qwen/Qwen3.6-27B
+MODELSCOPE_MAX_TOKENS=0
+MODELSCOPE_TIMEOUT_SECONDS=60s
 ```
 
-当前 Dashboard 创建的 Agent 统一使用 `glm-4.7-flash`。
+两个密钥相互独立：
+
+- `OPENAI_API_KEY`：智谱开放平台 Key，用于 `glm-4.7-flash`。
+- `MODELSCOPE_ACCESS_TOKEN`：ModelScope Access Token，用于 `Qwen/Qwen3.6-27B`。
+
+Dashboard 创建 Agent 时可选择模型。没有填写 ModelScope token 时，GLM 仍可正常使用，但 Qwen Run 会返回缺少 token 的明确错误。
 
 ## 3. Apple Silicon 首次设置
 
@@ -114,7 +125,7 @@ http://localhost:5173
 
 - Dashboard 正常显示，不是空白页。
 - Agent 可以创建并获得独立容器与 workspace volume。
-- GLM 输出可以实时显示。
+- 所选模型的输出可以实时显示。
 - 同一 Agent 同时只允许一个活跃 run。
 - Agent 可以停止、恢复和删除。
 
@@ -167,7 +178,7 @@ docker compose --env-file .env -f deploy/docker-compose.yml down -v
 | BuildKit `metadata_v2.db` I/O error | 重启 Docker Desktop；仍失败时使用 Troubleshoot 清理 Docker 数据，注意先备份重要 volume。 |
 | Dashboard 空白 | 强制刷新并查看 `web` 日志。 |
 | 创建 Agent 失败 | 查看 `controlplane` 日志，确认 Docker socket 可用且 `alpine:3.19` 能拉取。 |
-| Run 无输出 | 检查 `OPENAI_API_KEY`，再查看 `worker`、`gateway` 日志。 |
+| Run 无输出 | GLM 检查 `OPENAI_API_KEY`；Qwen 检查 `MODELSCOPE_ACCESS_TOKEN`；再查看 `worker`、`gateway` 日志。 |
 | API 请求失败 | 确认 `web`、`controlplane` 都在运行；Nginx 会把 `/api` 代理到 `controlplane:8086`。 |
 
 ## 8. 继续阅读

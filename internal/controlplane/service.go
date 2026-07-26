@@ -155,7 +155,7 @@ func (s *Service) consumeRun(r AgentRun, a AgentSpec) {
 	defer cancel()
 	stream, err := s.gateway.RunAgent(ctx)
 	if err == nil {
-		err = stream.Send(&pb.RunRequest{RunId: r.RunID, TraceId: r.TraceID, UserId: "local-dev", AgentId: a.ID, Prompt: r.Prompt, Model: AgentModel, SystemPrompt: a.SystemPrompt})
+		err = stream.Send(&pb.RunRequest{RunId: r.RunID, TraceId: r.TraceID, UserId: "local-dev", AgentId: a.ID, Prompt: r.Prompt, Model: a.Model, SystemPrompt: a.SystemPrompt})
 	}
 	if err == nil {
 		err = stream.CloseSend()

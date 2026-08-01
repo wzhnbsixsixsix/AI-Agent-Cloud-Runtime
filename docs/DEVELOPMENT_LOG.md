@@ -4,6 +4,13 @@
 
 ## 2026-08-01
 
+### 建立 Dashboard 与平台功能 TODO 基线
+
+- 目标：集中记录当前 Dashboard 尚未覆盖的能力，并明确“前端可直接补齐”“需要 Control Plane/BFF”“需要新增后端设计”三类边界。
+- 修改：新增 [`TODO.md`](./TODO.md)，按 P0–P3 记录 Run 恢复与 Tool 可见性、Runtime 管理入口、Agent/Workspace 增强及 ACP 协作与权限体系等待办，并给出推荐实施顺序。
+- 文档治理：将 TODO 加入 [`docs/README.md`](./README.md) 的开发记录索引；后续完成事项时同步勾选清单并在本日志记录验证结果。
+- 验证：检查 Markdown 链接指向现有文档，确认待办与当前 REST/SSE 边界及已实现功能描述一致。
+
 ### Dashboard 增加克制企业级动效
 
 - 目标：在不改变功能流程和数据语义的前提下，为开发者控制台补充清晰、低干扰的操作与状态反馈。

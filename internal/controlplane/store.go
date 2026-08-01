@@ -47,6 +47,8 @@ func (s *Store) EnsureSchema(ctx context.Context) error {
 		);
 		CREATE UNIQUE INDEX IF NOT EXISTS agent_runs_one_active_idx ON agent_runs(agent_id) WHERE status = 'running';
 		CREATE INDEX IF NOT EXISTS agent_runs_created_idx ON agent_runs(created_at DESC);
+		UPDATE agents SET model = 'Qwen/Qwen3.5-35B-A3B', updated_at = now()
+		WHERE model = 'Qwen/Qwen3.6-27B';
 	`)
 	return err
 }

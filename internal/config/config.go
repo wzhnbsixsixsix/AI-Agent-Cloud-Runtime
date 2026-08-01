@@ -97,7 +97,7 @@ type Worker struct {
 	OpenAITimeout         time.Duration `env:"OPENAI_TIMEOUT_SECONDS"  envDefault:"60s"`
 	ModelScopeBaseURL     string        `env:"MODELSCOPE_BASE_URL"         envDefault:"https://api-inference.modelscope.cn/v1"`
 	ModelScopeAccessToken string        `env:"MODELSCOPE_ACCESS_TOKEN"`
-	ModelScopeModel       string        `env:"MODELSCOPE_MODEL"            envDefault:"Qwen/Qwen3.6-27B"`
+	ModelScopeModel       string        `env:"MODELSCOPE_MODEL"            envDefault:"Qwen/Qwen3.5-35B-A3B"`
 	ModelScopeMaxTokens   int           `env:"MODELSCOPE_MAX_TOKENS"       envDefault:"0"`
 	ModelScopeTimeout     time.Duration `env:"MODELSCOPE_TIMEOUT_SECONDS"  envDefault:"60s"`
 

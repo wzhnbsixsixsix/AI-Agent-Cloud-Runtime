@@ -81,7 +81,7 @@ Docker L1 已经足够展示 tool 隔离、资源限制、预热池和 function-
 
 - **W1-W10：已完成**。runtime 主链路、ACP/gRPC、Docker L1 sandbox、Skill/RAG、Multi-Agent、Hook、服务发现、调度控制面和可观测性均已交付。
 - **W11：Agent Control Plane + Web Console 已完成代码实现**。新增持久 Agent Registry、Docker workspace volume、Control Plane HTTP/BFF、Redis-backed SSE 回放，以及浏览器端 Agent 创建、生命周期管理、多模型流式运行、run 历史和只读 workspace 浏览。
-- **模型配置：支持智谱 `glm-4.7-flash` 与 ModelScope `Qwen/Qwen3.6-27B`**。Worker 根据 Agent model 路由到不同 OpenAI-compatible endpoint，分别使用 `OPENAI_API_KEY` 与 `MODELSCOPE_ACCESS_TOKEN`，避免密钥混用。
+- **模型配置：支持智谱 `glm-4.7-flash` 与 ModelScope `Qwen/Qwen3.5-35B-A3B`**。Worker 根据 Agent model 路由到不同 OpenAI-compatible endpoint，分别使用 `OPENAI_API_KEY` 与 `MODELSCOPE_ACCESS_TOKEN`，避免密钥混用。
 - **当前验收入口：** [`STARTUP_GUIDE.md`](../STARTUP_GUIDE.md) 提供 Dashboard 完整启动与功能测试；[`CLI_RUNTIME_GUIDE.md`](./CLI_RUNTIME_GUIDE.md) 独立保留 W1–W10 Runtime 能力验证。
 - **2026-07-26：前端端到端启动验证成功。** 在 Apple Silicon Docker Desktop 上完成依赖镜像拉取、8 个本地服务镜像构建、Postgres/Redis 健康检查及 Gateway、Worker、Control Plane、Web Console 启动；开发者可通过 `http://localhost:5173` 进入 Agent 管理界面进行完整前端验证。
 
@@ -91,7 +91,7 @@ Docker L1 已经足够展示 tool 隔离、资源限制、预热池和 function-
 |---|---|
 | 后端与协议 | Go 1.22、gRPC、Protocol Buffers、自研 ACP framed TCP、HTTP REST/SSE |
 | Agent Runtime | Redis Streams、Redis Pub/Sub、mutable history、function calling、Supervisor、Pipeline DAG、context compaction |
-| AI 与上下文 | 智谱 GLM `glm-4.7-flash`、ModelScope `Qwen/Qwen3.6-27B`、模型路由、Skill selector、RAG、pgvector、hybrid retrieval、reranker |
+| AI 与上下文 | 智谱 GLM `glm-4.7-flash`、ModelScope `Qwen/Qwen3.5-35B-A3B`、模型路由、Skill selector、RAG、pgvector、hybrid retrieval、reranker |
 | 数据与基础设施 | Redis 7、PostgreSQL 16 + pgvector、etcd、Docker Engine API、Docker Compose、Nginx |
 | 安全与扩展 | Docker L1 sandbox、resource limits、read-only rootfs、WASM/WASI、wazero Hook、tool allow-list |
 | 可观测性 | OpenTelemetry、Prometheus、Grafana、OTLP Collector、structured logging |

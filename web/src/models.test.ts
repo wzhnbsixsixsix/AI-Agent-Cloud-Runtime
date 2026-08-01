@@ -6,7 +6,7 @@ describe('Agent model options', () => {
     expect(DEFAULT_AGENT_MODEL).toBe('glm-4.7-flash')
     expect(AGENT_MODEL_OPTIONS.map(option => option.value)).toEqual([
       'glm-4.7-flash',
-      'Qwen/Qwen3.6-27B',
+      'Qwen/Qwen3.5-35B-A3B',
     ])
   })
 })

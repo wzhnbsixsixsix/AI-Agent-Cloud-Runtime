@@ -6,7 +6,7 @@ AgentForge 是一个用 Go 实现的云原生 AI Agent Runtime。它提供 Web A
 
 - **W1-W10 Runtime：已完成。**
 - **Web Dashboard + Agent Control Plane：已实现并完成本地端到端启动验证。**
-- **模型：支持智谱 `glm-4.7-flash` 和 ModelScope `Qwen/Qwen3.6-27B`，分别使用独立密钥。**
+- **模型：支持智谱 `glm-4.7-flash` 和 ModelScope `Qwen/Qwen3.5-35B-A3B`，分别使用独立密钥。**
 - **ACP Agent-to-Agent Collaboration Gateway：设计完成，尚未实现。**
 
 当前 Dashboard 支持：
@@ -29,7 +29,7 @@ flowchart LR
   Redis --> Worker["Worker"]
   Worker --> Router["Model Router"]
   Router --> GLM["智谱 GLM-4.7-Flash"]
-  Router --> Qwen["ModelScope Qwen3.6-27B"]
+  Router --> Qwen["ModelScope Qwen3.5-35B-A3B"]
   Worker --> Services["Skill / RAG / Hook"]
   Worker --> Sandbox["Docker Sandbox"]
   CP --> Agent["Persistent Agent + Workspace"]

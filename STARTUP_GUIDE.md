@@ -45,7 +45,7 @@ WORKER_HEARTBEAT_SECONDS=5s
 
 MODELSCOPE_BASE_URL=https://api-inference.modelscope.cn/v1
 MODELSCOPE_ACCESS_TOKEN=你的_ModelScope_Access_Token
-MODELSCOPE_MODEL=Qwen/Qwen3.6-27B
+MODELSCOPE_MODEL=Qwen/Qwen3.5-35B-A3B
 MODELSCOPE_MAX_TOKENS=0
 MODELSCOPE_TIMEOUT_SECONDS=60s
 ```
@@ -53,7 +53,7 @@ MODELSCOPE_TIMEOUT_SECONDS=60s
 两个密钥相互独立：
 
 - `OPENAI_API_KEY`：智谱开放平台 Key，用于 `glm-4.7-flash`。
-- `MODELSCOPE_ACCESS_TOKEN`：ModelScope Access Token，用于 `Qwen/Qwen3.6-27B`。
+- `MODELSCOPE_ACCESS_TOKEN`：ModelScope Access Token，用于 `Qwen/Qwen3.5-35B-A3B`。
 
 Dashboard 创建 Agent 时可选择模型。没有填写 ModelScope token 时，GLM 仍可正常使用，但 Qwen Run 会返回缺少 token 的明确错误。
 

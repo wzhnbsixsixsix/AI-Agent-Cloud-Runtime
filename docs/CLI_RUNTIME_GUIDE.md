@@ -194,12 +194,12 @@ LLM_THINKING_ENABLED=true
 ```dotenv
 MODELSCOPE_BASE_URL=https://api-inference.modelscope.cn/v1
 MODELSCOPE_ACCESS_TOKEN=你的_ModelScope_Access_Token
-MODELSCOPE_MODEL=Qwen/Qwen3.6-27B
+MODELSCOPE_MODEL=Qwen/Qwen3.5-35B-A3B
 MODELSCOPE_MAX_TOKENS=0
 MODELSCOPE_TIMEOUT_SECONDS=60s
 ```
 
-Dashboard 和携带 `model=Qwen/Qwen3.6-27B` 的 Run 会路由到 ModelScope；其他模型继续使用默认智谱 Provider。
+Dashboard 和携带 `model=Qwen/Qwen3.5-35B-A3B` 的 Run 会路由到 ModelScope；其他模型继续使用默认智谱 Provider。
 
 重启服务：
 
@@ -686,7 +686,7 @@ LLM_PROVIDER=mock
 OPENAI_API_KEY=你的智谱_API_KEY
 ```
 
-如果 Agent 选择 `Qwen/Qwen3.6-27B`，还需要填写 `MODELSCOPE_ACCESS_TOKEN`。
+如果 Agent 选择 `Qwen/Qwen3.5-35B-A3B`，还需要填写 `MODELSCOPE_ACCESS_TOKEN`。
 
 ### Q2：`agentctl` 连不上 `localhost:8080`
 

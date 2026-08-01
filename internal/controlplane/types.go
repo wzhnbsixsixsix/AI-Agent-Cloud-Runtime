@@ -10,7 +10,7 @@ import (
 
 const (
 	DefaultAgentModel    = "glm-4.7-flash"
-	ModelScopeAgentModel = "Qwen/Qwen3.6-27B"
+	ModelScopeAgentModel = "Qwen/Qwen3.5-35B-A3B"
 	StatusProvisioning   = "provisioning"
 	StatusRunning        = "running"
 	StatusStopped        = "stopped"

@@ -46,6 +46,7 @@ func NewFromConfig(cfg FactoryConfig) (Provider, error) {
 				cfg.OpenAIModel:     primary,
 				cfg.ModelScopeModel: modelscope,
 			},
+			PrefixRoutes: map[string]Provider{"Qwen/": modelscope},
 		}, nil
 	case "modelscope":
 		if cfg.ModelScopeAccessToken == "" {
@@ -61,6 +62,7 @@ func NewFromConfig(cfg FactoryConfig) (Provider, error) {
 					reason: "OPENAI_API_KEY and LLM_PROVIDER=openai are required for GLM models",
 				},
 			},
+			PrefixRoutes: map[string]Provider{"Qwen/": modelscope},
 		}, nil
 	case "mock":
 		return NewMock(nil, 0), nil

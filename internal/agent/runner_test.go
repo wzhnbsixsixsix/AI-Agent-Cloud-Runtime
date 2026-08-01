@@ -77,6 +77,31 @@ func (fakeTool) Invoke(context.Context, sandbox.Sandbox, json.RawMessage) (tool.
 	}, nil
 }
 
+type recordingDriver struct {
+	next     sandbox.Driver
+	mu       sync.Mutex
+	acquired []string
+}
+
+func (d *recordingDriver) Acquire(ctx context.Context, workspaceID string) (sandbox.Sandbox, error) {
+	d.mu.Lock()
+	d.acquired = append(d.acquired, workspaceID)
+	d.mu.Unlock()
+	return d.next.Acquire(ctx, workspaceID)
+}
+func (d *recordingDriver) Release(ctx context.Context, sb sandbox.Sandbox) error {
+	return d.next.Release(ctx, sb)
+}
+func (d *recordingDriver) Stats() sandbox.Stats { return d.next.Stats() }
+func (d *recordingDriver) Close(ctx context.Context) error {
+	return d.next.Close(ctx)
+}
+func (d *recordingDriver) acquiredIDs() []string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return append([]string(nil), d.acquired...)
+}
+
 type fakeRetriever struct {
 	results []rag.Result
 	err     error
@@ -234,6 +259,45 @@ func TestRunnerToolCallingLoop(t *testing.T) {
 	}
 	if len(msgs) < 4 || msgs[len(msgs)-1].Content != "final" {
 		t.Fatalf("bad history after tool loop: %+v", msgs)
+	}
+}
+
+func TestRunnerUsesPersistentAgentWorkspaceIdentity(t *testing.T) {
+	provider := &scriptedProvider{streams: [][]llm.TokenEvent{
+		{
+			{ToolCalls: []llm.ToolCall{{ID: "call_1", Type: "function", Name: "fake_tool", Arguments: `{}`}}},
+			{Done: true, StopReason: llm.StopReasonToolCalls},
+		},
+		{{Token: "done"}, {Done: true, StopReason: llm.StopReasonStop}},
+	}}
+	r, _, ps := newRunnerTest(t, provider)
+	registry := tool.NewRegistry()
+	if err := registry.Register(fakeTool{}); err != nil {
+		t.Fatalf("register tool: %v", err)
+	}
+	memoryDriver, err := sandbox.NewMemoryDriver(t.TempDir(), 1)
+	if err != nil {
+		t.Fatalf("memory driver: %v", err)
+	}
+	driver := &recordingDriver{next: memoryDriver}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = driver.Close(ctx)
+	})
+	r.AgentToolRunner = &tool.Runner{Registry: registry, Driver: driver, HardTimeout: time.Second}
+
+	_, err = collectRunEvents(t, ps, "run-agent-tool", func(ctx context.Context) error {
+		return r.Run(ctx, queue.Task{
+			RunID: "run-agent-tool", AgentID: "agent-123", Prompt: "use tool", TraceID: "trace-agent-tool",
+		})
+	})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	ids := driver.acquiredIDs()
+	if len(ids) != 1 || ids[0] != "agent-123" {
+		t.Fatalf("agent tools must acquire the persistent agent workspace, got %v", ids)
 	}
 }
 

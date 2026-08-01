@@ -25,6 +25,7 @@ type Runner struct {
 	Provider            llm.Provider
 	Events              *queue.PubSub
 	ToolRunner          *tool.Runner
+	AgentToolRunner     *tool.Runner
 	ToolMaxSteps        int
 	SkillSelector       skill.Selector
 	SkillRenderer       skill.Renderer
@@ -196,7 +197,7 @@ func (r *Runner) Run(ctx context.Context, t queue.Task) (runErr error) {
 		toolRounds int
 		startTime  = time.Now()
 	)
-	tools := r.llmTools()
+	tools := r.llmTools(t)
 	maxToolSteps := r.ToolMaxSteps
 	if maxToolSteps <= 0 {
 		maxToolSteps = 5
@@ -238,7 +239,8 @@ func (r *Runner) Run(ctx context.Context, t queue.Task) (runErr error) {
 			break
 		}
 		r.executePostLLMHook(ctx, t, assistantText, toolCalls)
-		if (r.ToolRunner == nil || r.ToolRunner.Registry == nil) && !(r.MultiAgentEnabled && hasOnlyDispatchSubagent(toolCalls)) {
+		activeToolRunner := r.toolRunnerFor(t)
+		if (activeToolRunner == nil || activeToolRunner.Registry == nil) && !(r.MultiAgentEnabled && hasOnlyDispatchSubagent(toolCalls)) {
 			err := errors.New("model requested tool calls but tool runtime is disabled")
 			r.fail(ctx, t, cur, "tool_unavailable", err)
 			return err
@@ -391,10 +393,18 @@ func (r *Runner) streamOnce(ctx context.Context, t queue.Task, msgs []llm.Messag
 	return string(buf), toolCalls, tokenCnt, nil
 }
 
-func (r *Runner) llmTools() []llm.ToolDefinition {
+func (r *Runner) toolRunnerFor(t queue.Task) *tool.Runner {
+	if t.AgentID != "" && r.AgentToolRunner != nil {
+		return r.AgentToolRunner
+	}
+	return r.ToolRunner
+}
+
+func (r *Runner) llmTools(t queue.Task) []llm.ToolDefinition {
 	var out []llm.ToolDefinition
-	if r.ToolRunner != nil && r.ToolRunner.Registry != nil {
-		descs := r.ToolRunner.Registry.List()
+	toolRunner := r.toolRunnerFor(t)
+	if toolRunner != nil && toolRunner.Registry != nil {
+		descs := toolRunner.Registry.List()
 		out = make([]llm.ToolDefinition, 0, len(descs)+1)
 		for _, d := range descs {
 			out = append(out, llm.ToolDefinition{
@@ -447,7 +457,14 @@ func (r *Runner) executeToolCall(ctx context.Context, t queue.Task, callID strin
 	if tc.Name == "dispatch_subagent" && r.MultiAgentEnabled {
 		return r.dispatchSubagent(ctx, t, callID, tc)
 	}
-	return r.ToolRunner.Execute(ctx, callID, t.TraceID, tc.Name, []byte(tc.Arguments), 0)
+	toolRunner := r.toolRunnerFor(t)
+	if toolRunner == nil {
+		return queue.ToolResultEvent{}, errors.New("tool runtime is disabled")
+	}
+	if t.AgentID != "" && r.AgentToolRunner != nil {
+		return toolRunner.ExecuteInWorkspace(ctx, t.AgentID, callID, t.TraceID, tc.Name, []byte(tc.Arguments), 0)
+	}
+	return toolRunner.Execute(ctx, callID, t.TraceID, tc.Name, []byte(tc.Arguments), 0)
 }
 
 func (r *Runner) dispatchSubagent(ctx context.Context, t queue.Task, callID string, tc llm.ToolCall) (queue.ToolResultEvent, error) {

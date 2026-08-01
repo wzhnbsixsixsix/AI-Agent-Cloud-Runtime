@@ -63,6 +63,12 @@ func (r *Runner) Handle(ctx context.Context, d queue.ToolDelivery) error {
 
 // Execute 直接执行一次 tool，供 queue consumer 与 agent function-calling loop 复用。
 func (r *Runner) Execute(ctx context.Context, callID, traceID, toolName string, argsJSON []byte, timeoutMS int) (queue.ToolResultEvent, error) {
+	return r.ExecuteInWorkspace(ctx, callID, callID, traceID, toolName, argsJSON, timeoutMS)
+}
+
+// ExecuteInWorkspace separates the workspace identity from the individual
+// tool-call identity. Persistent Agents use their agent ID as workspaceID.
+func (r *Runner) ExecuteInWorkspace(ctx context.Context, workspaceID, callID, traceID, toolName string, argsJSON []byte, timeoutMS int) (queue.ToolResultEvent, error) {
 	ctx = obs.WithTraceID(ctx, traceID)
 	ctx, span := obs.StartSpan(ctx, "tool.execute", obs.Attr("tool.name", toolName))
 	var execErr error
@@ -118,7 +124,7 @@ func (r *Runner) Execute(ctx context.Context, callID, traceID, toolName string, 
 	// Acquire sandbox（即使是 http_fetch 也走一遍，保持调用接口一致；
 	// http_fetch 不会用到 sandbox.Exec 但拿到 workspace 仍有意义）。
 	acquireStart := time.Now()
-	sb, err := r.Driver.Acquire(tCtx, callID)
+	sb, err := r.Driver.Acquire(tCtx, workspaceID)
 	if err != nil {
 		execErr = err
 		obs.SandboxAcquireDuration.WithLabelValues(obs.ServiceName(), "error").Observe(time.Since(acquireStart).Seconds())

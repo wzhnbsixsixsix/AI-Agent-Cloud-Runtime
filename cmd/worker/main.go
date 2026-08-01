@@ -128,8 +128,9 @@ func main() {
 		logger.Warn("sandbox driver disabled", "driver", cfg.SandboxDriver, "err", dErr)
 	}
 	var tRunner *tool.Runner
+	var registry *tool.Registry
 	if driver != nil {
-		registry := tool.Builtins(tool.BuiltinsConfig{
+		registry = tool.Builtins(tool.BuiltinsConfig{
 			HTTPAllowList: cfg.ToolHTTPAllowList,
 			HTTPMaxBytes:  cfg.ToolHTTPMaxBytes,
 		})
@@ -140,9 +141,27 @@ func main() {
 			HardTimeout: cfg.SandboxExecHard,
 		}
 	}
+	var agentDriver sandbox.Driver
+	var agentToolRunner *tool.Runner
+	if registry != nil && cfg.SandboxDriver == "docker" {
+		persistentDriver, err := sandbox.NewAgentDockerDriver(rootCtx, cfg.SandboxExecHard)
+		if err != nil {
+			logger.Warn("persistent agent tool driver disabled", "err", err)
+		} else {
+			agentDriver = persistentDriver
+			agentToolRunner = &tool.Runner{
+				Registry:    registry,
+				Driver:      persistentDriver,
+				Log:         logger.With("comp", "agent-tool"),
+				HardTimeout: cfg.SandboxExecHard,
+			}
+			logger.Info("persistent agent tool driver ready")
+		}
+	}
 
 	runner := agent.NewRunner(store, provider, pubsub)
 	runner.ToolRunner = tRunner
+	runner.AgentToolRunner = agentToolRunner
 	runner.ToolMaxSteps = cfg.AgentToolMaxSteps
 	runner.MultiAgentEnabled = cfg.MultiAgentEnabled
 	runner.SubagentMaxDepth = cfg.SubagentMaxDepth
@@ -196,6 +215,10 @@ func main() {
 			if tRunner != nil {
 				tRunner.HookClient = hc
 				tRunner.HookFailClosed = cfg.HookFailClosed
+			}
+			if agentToolRunner != nil {
+				agentToolRunner.HookClient = hc
+				agentToolRunner.HookFailClosed = cfg.HookFailClosed
 			}
 			logger.Info("hook service enabled", "addr", cfg.HookServiceAddr)
 		}
@@ -263,6 +286,11 @@ func main() {
 	if driver != nil {
 		closeCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		_ = driver.Close(closeCtx)
+		cancel()
+	}
+	if agentDriver != nil {
+		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = agentDriver.Close(closeCtx)
 		cancel()
 	}
 	for _, conn := range serviceConns {

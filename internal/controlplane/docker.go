@@ -106,12 +106,17 @@ func (m *DockerManager) ListWorkspace(ctx context.Context, a AgentSpec, dir stri
 	if e != nil {
 		return nil, e
 	}
-	rc, _, e := m.cli.CopyFromContainer(ctx, a.ContainerID, path.Join("/workspace", p))
+	target := path.Join("/workspace", p)
+	rc, _, e := m.cli.CopyFromContainer(ctx, a.ContainerID, target)
 	if e != nil {
 		return nil, e
 	}
 	defer rc.Close()
-	tr := tar.NewReader(rc)
+	return readWorkspaceEntries(rc, p, path.Base(target))
+}
+
+func readWorkspaceEntries(r io.Reader, dir, archiveRoot string) ([]WorkspaceEntry, error) {
+	tr := tar.NewReader(r)
 	out := []WorkspaceEntry{}
 	for {
 		h, e := tr.Next()
@@ -122,17 +127,14 @@ func (m *DockerManager) ListWorkspace(ctx context.Context, a AgentSpec, dir stri
 			return nil, e
 		}
 		name := strings.TrimPrefix(path.Clean(h.Name), "./")
-		if name == "" {
+		if name == archiveRoot || !strings.HasPrefix(name, archiveRoot+"/") {
 			continue
 		}
-		rel := strings.TrimPrefix(name, strings.TrimSuffix(p, "/")+"/")
-		if p != "" && !strings.HasPrefix(name, p+"/") {
-			continue
-		}
+		rel := strings.TrimPrefix(name, archiveRoot+"/")
 		if strings.Contains(rel, "/") {
 			continue
 		}
-		out = append(out, WorkspaceEntry{Path: path.Join(p, rel), Name: rel, Directory: h.Typeflag == tar.TypeDir, Size: h.Size})
+		out = append(out, WorkspaceEntry{Path: path.Join(dir, rel), Name: rel, Directory: h.Typeflag == tar.TypeDir, Size: h.Size})
 	}
 	return out, nil
 }

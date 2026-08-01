@@ -4,6 +4,15 @@
 
 ## 2026-08-01
 
+### Dashboard 增加克制企业级动效
+
+- 目标：在不改变功能流程和数据语义的前提下，为开发者控制台补充清晰、低干扰的操作与状态反馈。
+- 修改：新增 150–300ms 统一 motion tokens；Agents、Runs、Agent Detail 和使用指南增加路由淡入与轻微上移；卡片、表格、按钮、状态 Tag、Run 输出和 Workspace 目录切换增加局部反馈。
+- 运行反馈：`running`、`provisioning` 和 Control Plane 健康状态使用低强度呼吸效果；Run 活跃时输出面板显示柔和高亮和流式光标，终态后随 React 状态自动停止。
+- 指南与目录：使用指南 Hero 使用低频低透明度流光，能力卡片错峰入场；Workspace 路径、目录树和文件预览在切换时短暂淡入。
+- 可访问性：通过 `prefers-reduced-motion: reduce` 关闭循环、位移和错峰动画；没有引入新的 npm 动画依赖，也没有修改 REST、SSE、OpenAPI 或 gRPC 接口。
+- 验证：Vitest 通过，TypeScript/Vite 生产构建通过；浏览器确认四个路由、创建 Drawer、状态标签、Run 面板样式规则及 `/ → /tt` Workspace 切换动效生效，未发现布局抖动或交互遮挡。
+
 ### Workspace 支持返回上一级目录
 
 - 问题：Agent Detail 的 Workspace 进入子目录后只能继续向下浏览，无法回到父目录。

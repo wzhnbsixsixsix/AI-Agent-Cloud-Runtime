@@ -33,6 +33,12 @@
 | [`DEMO_SCRIPT.md`](./DEMO_SCRIPT.md) | 三分钟作品集或面试演示话术 |
 | [`W9_BENCH_REPORT.md`](./W9_BENCH_REPORT.md) | 可复现压测记录 |
 
+## 开发记录
+
+| 文档 | 职责 |
+|---|---|
+| [`DEVELOPMENT_LOG.md`](./DEVELOPMENT_LOG.md) | 按日期记录功能问题、修改内容和验证结果，提供行为级文字追溯 |
+
 ## 架构决策记录
 
 | ADR | 决策 |

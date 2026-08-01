@@ -293,6 +293,9 @@ services:
         condition: service_started
       hookd:
         condition: service_started
+    # Worker 是可信控制组件，需要访问 Docker Desktop 的 root:root socket 来创建
+    # 隔离 sandbox；实际 sandbox 容器仍使用非 root 用户、只读 rootfs 和无网络策略。
+    user: "0:0"
     environment:
       <<: *observability-env
       OTEL_SERVICE_NAME: worker

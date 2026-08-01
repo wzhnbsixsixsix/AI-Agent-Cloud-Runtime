@@ -284,7 +284,7 @@ func makeSandboxDriver(ctx context.Context, cfg *config.Worker, log *slog.Logger
 	case "memory":
 		return sandbox.NewMemoryDriver(cfg.SandboxWorkspaceRoot, cfg.SandboxPoolSize)
 	case "docker":
-		return sandbox.NewDockerDriver(ctx, sandbox.DockerOptions{
+		driver, err := sandbox.NewDockerDriver(ctx, sandbox.DockerOptions{
 			Image:           cfg.SandboxImage,
 			PoolSize:        cfg.SandboxPoolSize,
 			AcquireTimeout:  cfg.SandboxAcquireTimeout,
@@ -295,6 +295,12 @@ func makeSandboxDriver(ctx context.Context, cfg *config.Worker, log *slog.Logger
 			ExecTimeoutHard: cfg.SandboxExecHard,
 			Logger:          log,
 		})
+		if err != nil {
+			// Do not return a typed nil (*DockerDriver)(nil) as sandbox.Driver.
+			// A typed nil interface compares non-nil and would panic on Acquire.
+			return nil, err
+		}
+		return driver, nil
 	default:
 		return nil, fmt.Errorf("unknown sandbox driver: %s", cfg.SandboxDriver)
 	}

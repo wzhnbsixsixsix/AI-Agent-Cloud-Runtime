@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"reflect"
 	"time"
 
 	"github.com/wzhnbsixsixsix/agentforge/internal/hook"
@@ -80,7 +81,7 @@ func (r *Runner) Execute(ctx context.Context, callID, traceID, toolName string, 
 		obs.ToolTotal.WithLabelValues(obs.ServiceName(), toolName, "error").Inc()
 		return queue.ToolResultEvent{}, execErr
 	}
-	if r.Driver == nil {
+	if isNilDriver(r.Driver) {
 		execErr = errors.New("sandbox driver is nil")
 		obs.ToolTotal.WithLabelValues(obs.ServiceName(), toolName, "error").Inc()
 		return queue.ToolResultEvent{}, execErr
@@ -204,6 +205,16 @@ func (r *Runner) Execute(ctx context.Context, callID, traceID, toolName string, 
 		MetaJSON:    metaJSON,
 		ElapsedMS:   time.Since(start).Milliseconds(),
 	}, nil
+}
+
+// isNilDriver also catches an interface containing a typed nil pointer.
+// This keeps a failed sandbox initialization from becoming a worker panic.
+func isNilDriver(driver sandbox.Driver) bool {
+	if driver == nil {
+		return true
+	}
+	value := reflect.ValueOf(driver)
+	return value.Kind() == reflect.Ptr && value.IsNil()
 }
 
 func (r *Runner) executePreToolHook(ctx context.Context, callID, traceID, toolName string, argsJSON []byte) ([]byte, bool, string, error) {

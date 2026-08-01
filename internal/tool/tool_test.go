@@ -232,3 +232,16 @@ func TestBuiltinsRegistry(t *testing.T) {
 		}
 	}
 }
+
+func TestRunnerRejectsTypedNilDriver(t *testing.T) {
+	var dockerDriver *sandbox.DockerDriver
+	runner := &Runner{
+		Registry: Builtins(BuiltinsConfig{}),
+		Driver:   dockerDriver,
+	}
+
+	_, err := runner.Execute(context.Background(), "call-1", "trace-1", "fs_list", []byte(`{"path":"."}`), 1000)
+	if err == nil || !strings.Contains(err.Error(), "sandbox driver is nil") {
+		t.Fatalf("expected nil driver error, got %v", err)
+	}
+}

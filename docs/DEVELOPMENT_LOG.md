@@ -2,6 +2,16 @@
 
 本文档记录影响用户体验、运行时语义或部署方式的实际变更，作为代码提交之外的文字追溯。项目能力边界与路线图仍以 [`PROJECT_DESIGN.md`](../PROJECT_DESIGN.md) 为准。
 
+## 2026-08-03
+
+### Dashboard 前端视觉系统升级：运行控制室
+
+- 目标：将通用浅色管理界面调整为与 AgentForge 的 Agent 编排、运行状态和控制平面语义一致的运行控制台，同时保持现有 API、SSE 和操作流程不变。
+- 修改：在 `web/src/main.tsx` 中统一 Ant Design 的颜色、文字、圆角与菜单主题，并为 Agents 和 Runs 的标题、数据表提供面向“注册表 / 执行台账”的信息层级；侧栏新增运行时身份与 Control Plane 连接状态。
+- 视觉：在 `web/src/styles.css` 建立深石墨、金属蓝灰、电光青和状态绿的 token 系统；使用低对比信号网格作为侧栏的标志性元素，重构导航、顶部环境栏、表格、卡片、运行输出与使用指南 Hero 的层次和反馈。
+- 可访问性：保留原有 `prefers-reduced-motion` 降级规则；不改动路由、REST、SSE、数据模型或 Agent 生命周期操作。
+- 验证：TypeScript/Vite 生产构建与 Vitest 测试通过。
+
 ## 2026-08-01
 
 ### 建立 Dashboard 与平台功能 TODO 基线

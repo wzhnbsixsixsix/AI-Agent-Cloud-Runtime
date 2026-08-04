@@ -27,6 +27,12 @@ func NewDockerManager() (*DockerManager, error) {
 	return &DockerManager{c}, nil
 }
 func (m *DockerManager) Close() error { return m.cli.Close() }
+
+// Ping confirms that the Docker daemon used for persistent Agents is available.
+func (m *DockerManager) Ping(ctx context.Context) error {
+	_, err := m.cli.Ping(ctx)
+	return err
+}
 func (m *DockerManager) Create(ctx context.Context, a AgentSpec) (string, error) {
 	if err := m.ensureImage(ctx, a.Image); err != nil {
 		return "", err

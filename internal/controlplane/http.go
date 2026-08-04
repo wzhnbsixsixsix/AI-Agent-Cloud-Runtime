@@ -1,6 +1,7 @@
 package controlplane
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -22,7 +23,7 @@ type HTTPServer struct {
 func (h *HTTPServer) Handler() http.Handler { return http.HandlerFunc(h.serveHTTP) }
 func (h *HTTPServer) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/healthz" {
-		writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+		h.health(w, r)
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/api/v1/") {
@@ -41,6 +42,10 @@ func (h *HTTPServer) serveHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *HTTPServer) api(w http.ResponseWriter, r *http.Request) {
 	p := strings.TrimPrefix(r.URL.Path, "/api/v1/")
 	parts := strings.Split(strings.Trim(p, "/"), "/")
+	if p == "status" && r.Method == http.MethodGet {
+		h.health(w, r)
+		return
+	}
 	if p == "agents" {
 		if r.Method == http.MethodGet {
 			h.listAgents(w, r)
@@ -92,6 +97,16 @@ func (h *HTTPServer) api(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeError(w, http.StatusNotFound, "not_found", "route not found")
+}
+func (h *HTTPServer) health(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	status := h.Service.Health(ctx)
+	code := http.StatusOK
+	if status.Status != "ok" {
+		code = http.StatusServiceUnavailable
+	}
+	writeJSON(w, code, status)
 }
 func decode(r *http.Request, v any) error {
 	defer r.Body.Close()

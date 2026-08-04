@@ -31,6 +31,11 @@ func OpenStore(ctx context.Context, dsn string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
+// Ping verifies that the Control Plane can still reach its authoritative
+// Agent and Run store. The dashboard health endpoint uses this rather than
+// reporting process liveness alone.
+func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
+
 func (s *Store) EnsureSchema(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS agents (
@@ -133,6 +138,14 @@ func (s *Store) ListRuns(ctx context.Context, agentID string) ([]AgentRun, error
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// ActiveRunCount returns the number of runs that still own an Agent workspace.
+// A run is active precisely while its persisted status is "running".
+func (s *Store) ActiveRunCount(ctx context.Context) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM agent_runs WHERE status = 'running'`).Scan(&count)
+	return count, err
 }
 func (s *Store) GetRun(ctx context.Context, id string) (AgentRun, error) {
 	var r AgentRun

@@ -12,6 +12,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	pb "github.com/wzhnbsixsixsix/agentforge/pkg/proto/gen"
 	"google.golang.org/grpc"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 type UIEvent struct {
@@ -23,8 +24,11 @@ type UIEvent struct {
 type EventStore struct{ rdb *redis.Client }
 
 func NewEventStore(rdb *redis.Client) *EventStore { return &EventStore{rdb} }
-func (s *EventStore) key(runID string) string     { return "ui:run_events:" + runID }
-func (s *EventStore) seqKey(runID string) string  { return "ui:run_event_seq:" + runID }
+
+// Ping verifies that the Redis event replay store is reachable.
+func (s *EventStore) Ping(ctx context.Context) error { return s.rdb.Ping(ctx).Err() }
+func (s *EventStore) key(runID string) string        { return "ui:run_events:" + runID }
+func (s *EventStore) seqKey(runID string) string     { return "ui:run_event_seq:" + runID }
 func (s *EventStore) Append(ctx context.Context, runID, kind string, data any) (UIEvent, error) {
 	id, err := s.rdb.Incr(ctx, s.seqKey(runID)).Result()
 	if err != nil {
@@ -58,16 +62,56 @@ func (s *EventStore) After(ctx context.Context, runID string, last int64) ([]UIE
 }
 
 type Service struct {
-	Store        *Store
-	Docker       *DockerManager
-	Events       *EventStore
-	gateway      pb.AgentServiceClient
-	defaultImage string
-	mu           sync.Mutex
+	Store         *Store
+	Docker        *DockerManager
+	Events        *EventStore
+	gateway       pb.AgentServiceClient
+	gatewayHealth healthpb.HealthClient
+	defaultImage  string
+	mu            sync.Mutex
+}
+
+// HealthStatus is the dashboard-facing view of Control Plane readiness. A
+// component is "ok" only after its own live dependency check succeeds.
+type HealthStatus struct {
+	Status     string            `json:"status"`
+	ActiveRuns int               `json:"activeRuns"`
+	Checks     map[string]string `json:"checks"`
 }
 
 func NewService(store *Store, docker *DockerManager, events *EventStore, conn *grpc.ClientConn, defaultImage string) *Service {
-	return &Service{Store: store, Docker: docker, Events: events, gateway: pb.NewAgentServiceClient(conn), defaultImage: defaultImage}
+	return &Service{Store: store, Docker: docker, Events: events, gateway: pb.NewAgentServiceClient(conn), gatewayHealth: healthpb.NewHealthClient(conn), defaultImage: defaultImage}
+}
+
+// Health checks the dependencies required to manage Agents and execute Runs.
+// It also returns the authoritative active Run count from PostgreSQL.
+func (s *Service) Health(ctx context.Context) HealthStatus {
+	checks := map[string]string{}
+	check := func(name string, err error) {
+		if err != nil {
+			checks[name] = "failed"
+			return
+		}
+		checks[name] = "ok"
+	}
+	check("postgres", s.Store.Ping(ctx))
+	check("redis", s.Events.Ping(ctx))
+	check("docker", s.Docker.Ping(ctx))
+	gatewayCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_, err := s.gatewayHealth.Check(gatewayCtx, &healthpb.HealthCheckRequest{})
+	check("gateway", err)
+
+	activeRuns, err := s.Store.ActiveRunCount(ctx)
+	check("runStore", err)
+	status := "ok"
+	for _, result := range checks {
+		if result != "ok" {
+			status = "degraded"
+			break
+		}
+	}
+	return HealthStatus{Status: status, ActiveRuns: activeRuns, Checks: checks}
 }
 func (s *Service) Create(ctx context.Context, in CreateAgentInput) (AgentSpec, error) {
 	if err := in.Validate(s.defaultImage); err != nil {

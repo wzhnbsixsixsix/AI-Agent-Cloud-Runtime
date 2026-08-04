@@ -13,7 +13,7 @@ Dashboard 已实现 Agent 创建、启动、停止、删除、模型与资源配
 - [ ] 增加 Tool 调用时间线，展示工具名称、执行阶段、结果、错误和耗时，避免工具执行期间看起来像卡死。
 - [ ] 增加 Run 详情页，展示完整输出、状态时间线、错误、Trace ID、Token 数和执行时间。
 - [ ] 在 Runs 页面支持进入历史 Run，并回放仍在保留期内的 SSE 事件。
-- [ ] 将顶部 Control Plane `Healthy` 改为真实健康检查结果，并显示当前活跃 Run 数量。
+- [x] 将顶部 Control Plane `Healthy` 改为真实健康检查结果，并显示当前活跃 Run 数量（2026-08-04）。
 - [ ] 完善 Agent provisioning 体验：显示创建进度、失败原因和重试入口，不能把 `failed` Agent 提示为创建成功。
 - [ ] 在 Agent 详情中展示 `lastError`，为生命周期操作提供明确的 loading、成功和失败反馈。
 

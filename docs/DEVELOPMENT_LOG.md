@@ -2,6 +2,15 @@
 
 本文档记录影响用户体验、运行时语义或部署方式的实际变更，作为代码提交之外的文字追溯。项目能力边界与路线图仍以 [`PROJECT_DESIGN.md`](../PROJECT_DESIGN.md) 为准。
 
+## 2026-08-04
+
+### Control Plane 实时健康状态与活跃 Run 计数
+
+- 目标：让 Dashboard 顶部状态反映 Control Plane 的真实可用性，而不是固定显示 `Healthy`，并提供当前正在执行的 Run 数量。
+- 修改：新增 `GET /api/v1/status`；健康检查会实际探测 PostgreSQL、Redis、Docker daemon 与 Gateway gRPC health，并从 PostgreSQL 统计 `status = 'running'` 的活跃 Run。任一依赖不可用时接口返回 `503` 和 `degraded` 状态，`/healthz` 同步采用该结果以便部署健康检查一致。
+- 修改：Web Console 每 5 秒刷新状态，在顶部显示 `Healthy` 或 `Degraded`、当前活跃 Run 数；侧栏也不再固定声明已连接。状态标签的悬浮说明列出各依赖检查结果。
+- 验证：Web 生产构建与 Vitest 测试通过；接口契约和对应 Dashboard 类型已写入 `api/controlplane.openapi.yaml` 与 `web/src/api.generated.ts`。
+
 ## 2026-08-03
 
 ### Dashboard 前端视觉系统升级：运行控制室

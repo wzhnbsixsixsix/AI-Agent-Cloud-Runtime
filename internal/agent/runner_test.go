@@ -230,13 +230,24 @@ func TestRunnerToolCallingLoop(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 	seenWaiting := false
+	seenToolStart := false
+	seenToolComplete := false
 	for _, ev := range events {
 		if ev.Kind == queue.EventState && ev.State == string(StateWaitingTool) {
 			seenWaiting = true
 		}
+		if ev.Kind == queue.EventTool && ev.ToolName == "fake_tool" && ev.Phase == "started" {
+			seenToolStart = true
+		}
+		if ev.Kind == queue.EventTool && ev.ToolName == "fake_tool" && ev.Phase == "completed" && ev.Result == "tool says hello" && ev.ElapsedMS >= 0 {
+			seenToolComplete = true
+		}
 	}
 	if !seenWaiting {
 		t.Fatalf("WAITING_TOOL state not observed: %+v", events)
+	}
+	if !seenToolStart || !seenToolComplete {
+		t.Fatalf("tool timeline events not observed: %+v", events)
 	}
 	reqs := provider.reqs()
 	if len(reqs) != 2 {

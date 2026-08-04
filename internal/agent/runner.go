@@ -261,11 +261,23 @@ func (r *Runner) Run(ctx context.Context, t queue.Task) (runErr error) {
 			if callID == "" {
 				callID = obs.NewRunID()
 			}
+			toolStarted := time.Now()
+			r.publishToolEvent(ctx, t, callID, tc.Name, "started", "", "", false, 0)
 			ev, err := r.executeToolCall(ctx, t, callID, tc)
 			if err != nil {
+				r.publishToolEvent(ctx, t, callID, tc.Name, "failed", "", err.Error(), true, uint64(time.Since(toolStarted).Milliseconds()))
 				r.fail(ctx, t, cur, "tool_execute", err)
 				return err
 			}
+			toolError := ev.ErrorMsg
+			if toolError == "" && ev.IsError {
+				toolError = ev.Content
+			}
+			phase := "completed"
+			if ev.IsError {
+				phase = "failed"
+			}
+			r.publishToolEvent(ctx, t, callID, tc.Name, phase, timelineText(ev.Content), timelineText(toolError), ev.IsError, ev.ElapsedMS)
 			msgs = append(msgs, llm.Message{
 				Role:       llm.RoleTool,
 				ToolCallID: callID,
@@ -615,4 +627,23 @@ func (r *Runner) fail(ctx context.Context, t queue.Task, from State, code string
 		Code:    code,
 		Message: err.Error(),
 	})
+}
+
+// publishToolEvent keeps tool execution visible to clients while the Runner is
+// waiting for the model. Results are bounded so one verbose command cannot
+// overwhelm Redis-backed SSE replay or the dashboard.
+func (r *Runner) publishToolEvent(ctx context.Context, t queue.Task, callID, toolName, phase, result, runErr string, isError bool, elapsedMS uint64) {
+	_ = r.Events.Publish(ctx, t.RunID, queue.Event{
+		RunID: t.RunID, TraceID: t.TraceID, Kind: queue.EventTool,
+		CallID: callID, ToolName: toolName, Phase: phase, Result: result,
+		Message: runErr, IsError: isError, ElapsedMS: elapsedMS,
+	})
+}
+
+func timelineText(value string) string {
+	const maxBytes = 4 << 10
+	if len(value) <= maxBytes {
+		return value
+	}
+	return value[:maxBytes] + "\n… output truncated for the timeline"
 }

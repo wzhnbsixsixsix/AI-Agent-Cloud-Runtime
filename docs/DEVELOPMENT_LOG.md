@@ -4,6 +4,13 @@
 
 ## 2026-08-04
 
+### Run 工具调用时间线
+
+- 目标：在模型调用工具的等待阶段持续向 Dashboard 提供可理解的进度，避免 Run 输出没有 token 时被误认为卡死。
+- 修改：扩展 Run 的 protobuf、Redis Pub/Sub、Gateway gRPC 和 Control Plane SSE 契约，新增可回放的 `tool` 事件。每个调用先发送 `started`，再发送 `completed` 或 `failed`，包含工具名称、结果、错误和实际耗时；长结果会截断至 4 KiB，保护 SSE 回放与页面渲染。
+- 修改：Agent 详情页的 Run 面板新增 Tool timeline，实时显示当前阶段、结果/错误、耗时和调用数；事件以 `callId` 合并，使同一次调用从运行中平滑更新为终态。
+- 验证：新增 Agent Runner 断言，覆盖工具开始与成功完成事件；执行 Web 生产构建、Vitest 测试与 Control Plane 容器编译验证。
+
 ### Control Plane 实时健康状态与活跃 Run 计数
 
 - 目标：让 Dashboard 顶部状态反映 Control Plane 的真实可用性，而不是固定显示 `Healthy`，并提供当前正在执行的 Run 数量。

@@ -243,6 +243,11 @@ func mapEvent(runID, traceID string, ev queue.Event) *pb.RunEvent {
 		base.Payload = &pb.RunEvent_Done{Done: &pb.Done{TotalTokens: ev.Total, TsUnixMs: time.Now().UnixMilli()}}
 	case queue.EventError:
 		base.Payload = &pb.RunEvent_Error{Error: &pb.Error{Code: ev.Code, Message: ev.Message, Retriable: false}}
+	case queue.EventTool:
+		base.Payload = &pb.RunEvent_Tool{Tool: &pb.ToolEvent{
+			CallId: ev.CallID, ToolName: ev.ToolName, Phase: ev.Phase,
+			Result: ev.Result, Error: ev.Message, IsError: ev.IsError, ElapsedMs: ev.ElapsedMS,
+		}}
 	default:
 		return nil
 	}

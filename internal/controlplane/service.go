@@ -251,6 +251,8 @@ func convertEvent(ev *pb.RunEvent) (string, any, bool, string) {
 		return "done", map[string]any{"totalTokens": x.Done.TotalTokens}, true, "completed"
 	case *pb.RunEvent_Error:
 		return "error", map[string]any{"code": x.Error.Code, "message": x.Error.Message}, true, "failed"
+	case *pb.RunEvent_Tool:
+		return "tool", map[string]any{"callId": x.Tool.CallId, "toolName": x.Tool.ToolName, "phase": x.Tool.Phase, "result": x.Tool.Result, "error": x.Tool.Error, "isError": x.Tool.IsError, "elapsedMs": x.Tool.ElapsedMs}, false, ""
 	}
 	return "unknown", map[string]any{}, false, ""
 }

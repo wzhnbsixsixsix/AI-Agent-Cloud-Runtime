@@ -18,6 +18,7 @@ const (
 	EventToken EventKind = "token"
 	EventDone  EventKind = "done"
 	EventError EventKind = "error"
+	EventTool  EventKind = "tool"
 )
 
 // Event worker → gateway 的事件载体。
@@ -33,6 +34,14 @@ type Event struct {
 	Code    string `json:"code,omitempty"`  // error code
 	Message string `json:"message,omitempty"`
 	Total   int64  `json:"total,omitempty"`
+	// Tool timeline fields are populated for EventTool. A call emits started
+	// first, then completed or failed with its visible result and duration.
+	CallID    string `json:"call_id,omitempty"`
+	ToolName  string `json:"tool_name,omitempty"`
+	Phase     string `json:"phase,omitempty"`
+	Result    string `json:"result,omitempty"`
+	IsError   bool   `json:"is_error,omitempty"`
+	ElapsedMS uint64 `json:"elapsed_ms,omitempty"`
 }
 
 // PubSub 简单封装 Redis Pub/Sub。

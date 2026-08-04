@@ -69,6 +69,7 @@ message RunEvent {
     Token        token         = 11;
     Done         done          = 12;
     Error        error         = 13;
+    ToolEvent    tool          = 14;
   }
 }
 
@@ -102,6 +103,18 @@ message Error {
   string code = 1;
   string message = 2;
   bool retriable = 3;
+}
+
+// ToolEvent describes one visible step in an Agent tool call. The same call_id
+// emits a "started" event and then either "completed" or "failed".
+message ToolEvent {
+  string call_id = 1;
+  string tool_name = 2;
+  string phase = 3;
+  string result = 4;
+  string error = 5;
+  bool is_error = 6;
+  uint64 elapsed_ms = 7;
 }
 
 // ---------- W3: Tool 调用 ----------

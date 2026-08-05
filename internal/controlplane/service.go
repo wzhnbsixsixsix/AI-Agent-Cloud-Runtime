@@ -71,6 +71,19 @@ type Service struct {
 	mu            sync.Mutex
 }
 
+// BatchDeleteResult reports the durable outcome for every requested Agent.
+// A failed item deliberately remains visible to the caller instead of being
+// treated as deleted before its Docker and database cleanup has succeeded.
+type BatchDeleteResult struct {
+	DeletedIDs []string             `json:"deletedIds"`
+	Failed     []BatchDeleteFailure `json:"failed"`
+}
+
+type BatchDeleteFailure struct {
+	AgentID string `json:"agentId"`
+	Message string `json:"message"`
+}
+
 // HealthStatus is the dashboard-facing view of Control Plane readiness. A
 // component is "ok" only after its own live dependency check succeeds.
 type HealthStatus struct {
@@ -170,6 +183,34 @@ func (s *Service) DeleteAgent(ctx context.Context, id string) error {
 		return e
 	}
 	return s.Store.Delete(ctx, id)
+}
+
+// DeleteAgents applies the same real cleanup path as a single-Agent delete to
+// each distinct selection. Successful IDs have had their container/workspace
+// policy applied and their persisted Agent record removed.
+func (s *Service) DeleteAgents(ctx context.Context, ids []string) (BatchDeleteResult, error) {
+	if len(ids) == 0 {
+		return BatchDeleteResult{}, fmt.Errorf("at least one agent id is required")
+	}
+	result := BatchDeleteResult{DeletedIDs: []string{}, Failed: []BatchDeleteFailure{}}
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			result.Failed = append(result.Failed, BatchDeleteFailure{Message: "agent id is required"})
+			continue
+		}
+		if _, duplicate := seen[id]; duplicate {
+			continue
+		}
+		seen[id] = struct{}{}
+		if err := s.DeleteAgent(ctx, id); err != nil {
+			result.Failed = append(result.Failed, BatchDeleteFailure{AgentID: id, Message: err.Error()})
+			continue
+		}
+		result.DeletedIDs = append(result.DeletedIDs, id)
+	}
+	return result, nil
 }
 func (s *Service) StartRun(ctx context.Context, agentID, prompt string) (AgentRun, error) {
 	if strings.TrimSpace(prompt) == "" {

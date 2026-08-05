@@ -80,10 +80,14 @@ func (m *DockerManager) Stop(ctx context.Context, id string) error {
 }
 func (m *DockerManager) Delete(ctx context.Context, a AgentSpec) error {
 	if a.ContainerID != "" {
-		_ = m.cli.ContainerRemove(ctx, a.ContainerID, types.ContainerRemoveOptions{Force: true})
+		if err := m.cli.ContainerRemove(ctx, a.ContainerID, types.ContainerRemoveOptions{Force: true}); err != nil && !errdefs.IsNotFound(err) {
+			return fmt.Errorf("remove agent container: %w", err)
+		}
 	}
 	if a.WorkspacePolicy == "delete" {
-		return m.cli.VolumeRemove(ctx, a.VolumeName, true)
+		if err := m.cli.VolumeRemove(ctx, a.VolumeName, true); err != nil && !errdefs.IsNotFound(err) {
+			return fmt.Errorf("remove agent workspace: %w", err)
+		}
 	}
 	return nil
 }

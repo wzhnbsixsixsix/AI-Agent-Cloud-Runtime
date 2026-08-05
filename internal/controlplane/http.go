@@ -56,6 +56,10 @@ func (h *HTTPServer) api(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if p == "agents:batch-delete" && r.Method == http.MethodPost {
+		h.batchDeleteAgents(w, r)
+		return
+	}
 	if p == "runs" && r.Method == http.MethodGet {
 		h.listRuns(w, r, "")
 		return
@@ -160,6 +164,21 @@ func (h *HTTPServer) action(w http.ResponseWriter, r *http.Request, id, act stri
 		return
 	}
 	writeJSON(w, 200, v)
+}
+func (h *HTTPServer) batchDeleteAgents(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		AgentIDs []string `json:"agentIds"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	result, err := h.Service.DeleteAgents(r.Context(), in.AgentIDs)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 func (h *HTTPServer) listRuns(w http.ResponseWriter, r *http.Request, id string) {
 	v, e := h.Service.Store.ListRuns(r.Context(), id)

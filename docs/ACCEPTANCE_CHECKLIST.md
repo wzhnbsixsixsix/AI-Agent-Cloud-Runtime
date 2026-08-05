@@ -9,7 +9,7 @@
 - Control Plane 健康状态正常。
 - 创建 Agent 后状态进入 `running`。
 - 在 Agent 详情页启动 Run，并持续收到 SSE 事件。
-- 刷新页面后仍能看到当前 Run 和历史事件。
+- 在 Run 仍为 `running` 时刷新页面：详情页自动识别该 Agent 的活跃 Run，重新连接 SSE 回放，并恢复已产生的输出和工具时间线。
 - 工作区目录可展开，文本文件可只读预览。
 - 停止 Agent 后状态正确更新。
 

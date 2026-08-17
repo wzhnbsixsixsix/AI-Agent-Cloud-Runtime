@@ -2,7 +2,25 @@
 
 ## 一句话版本
 
-AgentForge：Go 云原生 AI Agent Runtime，支持 gRPC/ACP 流式执行、Docker L1 沙箱工具、Skill/RAG 动态上下文、本地多 Agent 编排、WASM Hook、etcd 服务发现和 Prometheus/Grafana 可观测性。
+AgentForge：Go 云原生 AI Agent Runtime 与 Web Control Plane，支持 Agent 注册和持久 workspace、gRPC/ACP 流式执行、Docker L1 沙箱工具、Skill/RAG 动态上下文、本地多 Agent 编排、WASM Hook、etcd 服务发现及 Prometheus/Grafana 可观测性。
+
+## 简历 LaTeX 版本（截至 2026-08-05）
+
+```latex
+\begin{onecolentry}
+  \textbf{项目简介：} 基于 Go 构建的云原生 AI Agent Runtime 与 Web Control Plane，覆盖 Agent 注册、任务提交、流式执行、工具隔离、动态上下文、智能体编排与可观测性；支持 gRPC / 自研 ACP 双协议入口及 Docker Compose 一键部署。
+
+  \textbf{核心技术栈：} Go, gRPC, Redis Streams/PubSub, PostgreSQL/pgvector, Docker, React/TypeScript, WASM/Wazero, etcd, OpenTelemetry, Prometheus, Grafana
+
+  \begin{highlights}
+  \item \textbf{分布式流式执行与控制平面：}设计 \texttt{Gateway--Redis Stream--Worker} 异步执行链路，通过 Consumer Group 消费任务、Pub/Sub 回传 Token 与工具事件；实现 gRPC、ACP framed TCP 双入口及断线续传，并构建 React Control Plane，提供 Agent 注册、生命周期管理、SSE 回放、活跃 Run 刷新恢复与实时依赖健康状态。
+  \item \textbf{持久化 Agent 与安全工具运行时：}通过 Docker Engine API 创建具备独立 named volume 的持久 Agent workspace，使跨工具调用与跨 Run 文件状态可复用；构建 Docker L1 Sandbox 预热池，配置只读根文件系统、网络隔离、Capabilities 收敛及 CPU/内存/PID 限制，接入 OpenAI-compatible Function Calling，支持 bash、文件读写与 HTTP 工具调用。
+  \item \textbf{上下文、编排与平台扩展：}实现 mutable history fold、Skill 动态选择、pgvector Hybrid RAG 与 \texttt{<untrusted>} 上下文注入，以及 Supervisor Subagent、Pipeline DAG 和自动上下文压缩；将 Skill/RAG/Hook 拆分为独立 gRPC 服务，以 wazero 执行 WASM Hook，结合 etcd 服务发现、OpenTelemetry、Prometheus/Grafana 与 mock benchmark 形成可演示、可观测的运行时闭环。
+  \end{highlights}
+\end{onecolentry}
+```
+
+边界说明：当前 ACP 已用于客户端到 Gateway 的流式通信、事件缓存与续传；**Agent-to-Agent Task/Result Collaboration Gateway 仅完成设计，尚未实现**，不应写入已交付能力。
 
 ## 简历 Bullets
 
@@ -84,6 +102,7 @@ Docker L1 已经足够展示 tool 隔离、资源限制、预热池和 function-
 - **模型配置：支持智谱 `glm-4.7-flash` 与 ModelScope `Qwen/Qwen3.5-35B-A3B`**。Worker 根据 Agent model 路由到不同 OpenAI-compatible endpoint，分别使用 `OPENAI_API_KEY` 与 `MODELSCOPE_ACCESS_TOKEN`，避免密钥混用。
 - **当前验收入口：** [`STARTUP_GUIDE.md`](../STARTUP_GUIDE.md) 提供 Dashboard 完整启动与功能测试；[`CLI_RUNTIME_GUIDE.md`](./CLI_RUNTIME_GUIDE.md) 独立保留 W1–W10 Runtime 能力验证。
 - **2026-07-26：前端端到端启动验证成功。** 在 Apple Silicon Docker Desktop 上完成依赖镜像拉取、8 个本地服务镜像构建、Postgres/Redis 健康检查及 Gateway、Worker、Control Plane、Web Console 启动；开发者可通过 `http://localhost:5173` 进入 Agent 管理界面进行完整前端验证。
+- **2026-08-05：Dashboard 运行可见性与 Agent 管理增强完成。** 已交付实时依赖健康状态和活跃 Run 计数、工具调用时间线、运行中刷新页面后的 SSE 回放恢复、Agent 完整资源/工具/工作区概览，以及按服务端结果处理的批量真实删除。
 
 ## 技术栈
 

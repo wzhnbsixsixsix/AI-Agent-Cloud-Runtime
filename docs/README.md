@@ -16,6 +16,7 @@
 | [`PROJECT_DESIGN.md`](../PROJECT_DESIGN.md) | 项目定位、设计原则、模块边界、交付状态和路线图 |
 | [`ARCHITECTURE.md`](./ARCHITECTURE.md) | 当前已实现的数据流、服务拆分、上下文和可观测架构 |
 | [`CONTAINER_NETWORKING.md`](./CONTAINER_NETWORKING.md) | Compose 网络、服务寻址、端口、Docker socket 和隔离边界 |
+| [`OPEN_SOURCE_RUNTIME_RESEARCH.md`](./OPEN_SOURCE_RUNTIME_RESEARCH.md) | 开源沙箱、Agent 框架/MCP、Memory 的调研、选型理由、版本证据与待实施阶段 |
 
 ## 运行时手册
 
@@ -49,6 +50,7 @@
 | [`003-w8-service-split.md`](./adr/003-w8-service-split.md) | Skill/RAG/Hook 服务拆分 |
 | [`004-w9-observability.md`](./adr/004-w9-observability.md) | OTel、Prometheus、Grafana 选型 |
 | [`005-agent-control-plane-and-collaboration.md`](./adr/005-agent-control-plane-and-collaboration.md) | 已实现 Control Plane 与规划中的 ACP 协作网关 |
+| [`006-open-source-runtime-components.md`](./adr/006-open-source-runtime-components.md) | OpenSandbox、隔离运行时、Eino/MCP、Mem0 的目标选型与迁移边界（未实现） |
 
 ## 求职材料
 

@@ -63,6 +63,26 @@ Dashboard 已实现 Agent 创建、启动、停止、删除、模型与资源配
 - [ ] 增加 API Key/Secret 的安全管理与脱敏页面。
 - [ ] 补充 gVisor/Firecracker、eBPF 审计等更强隔离能力及其管理入口。
 
+## 开源基础能力迁移专项（2026-10-09，后端与部署工程）
+
+选型依据、各方案采用/暂缓理由、官方来源及待验证限制见 [开源 Runtime 调研](./OPEN_SOURCE_RUNTIME_RESEARCH.md) 与 [ADR 006](./adr/006-open-source-runtime-components.md)。本次仅完成文档，以下代码与部署工作尚未执行。
+
+- [x] 落盘沙箱、Tool use/框架、Memory 的调研比较、选型理由和版本证据；记录 gVisor/egress 不兼容、AX 恢复语义、Mem0 OSS/托管版边界等修正。
+- [ ] P0：锁定上游 tag/commit、SDK 与镜像组合；验证 Go 工具链升级以及 GLM/Qwen 模型兼容性。
+- [ ] P0：完成 OpenSandbox 最小集成验证，分别测试无网 gVisor 与联网 Kata QEMU/egress；运行时不可用时禁止静默降级。
+- [ ] P1：接入 OpenSandbox 生命周期、命令和文件 API；同时覆盖临时工具路径与 Dashboard 持久 Agent，不仅替换预热池。
+- [ ] P1：设计并验证持久 workspace 的 stop/start、跨 Run 复用、浏览、删除与显式迁移/回滚；保留原 volume 数据。
+- [ ] P1：以 Eino 接管模型—工具循环，映射现有 Hook、工具权限、调用 ID、错误与 SSE 事件，保留外部契约。
+- [ ] P1：使用官方 MCP Go SDK 接入受控外部工具，完成最小 Eino 类型桥接；内部 sandbox 工具直接复用 OpenSandbox SDK。
+- [ ] P1：统一 Gateway 工具发现与 Worker 执行目录，验证 allow-list、取消、输出限制及非幂等工具不自动重放。
+- [ ] P1：部署自托管 Mem0 OSS + pgvector，锁定 Server 源码/依赖，配置真实 embedding 并验证模型兼容。
+- [ ] P1：明确 session/run/agent/user 范围，先实现单用户按 Agent 隔离；后端生成记忆过滤条件并校验按 ID 操作的归属。
+- [ ] P1：接入运行前召回、运行后持久写入任务、去重/重试、来源记录、故障可见与降级；提供查询、更正、删除和显式旧历史导入。
+- [ ] P2：执行同配置记忆效果评测及沙箱冷热启动/并发测试，记录环境、版本、成本与失败率，不引用厂商数字作为本项目实测。
+- [ ] P2：完成 CLI/Dashboard/gRPC/ACP/SSE/模型/workspace 回归后逐项切换默认路径，同步架构、部署和验收文档。
+
+专项顺序为版本与契约验证 → 沙箱及持久 workspace → Eino/MCP → Mem0 → 验收切换。Google AX 暂不集成；OpenViking、ReMe、Graphiti、E2B、ADK Go 的重新评估条件见调研报告，不默认同时实现多个 backend。
+
 ## 推荐实施顺序
 
 1. Run 刷新恢复、SSE 重连、Tool 调用时间线。

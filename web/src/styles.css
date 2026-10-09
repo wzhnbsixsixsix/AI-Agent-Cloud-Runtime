@@ -65,3 +65,59 @@ html, body, #root { background: var(--canvas); color: #172337; }
 .tool-timeline { margin: 4px 0 14px; padding: 13px; border: 1px solid #dce7eb; border-radius: 9px; background: #f8fbfc; }.tool-timeline-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }.tool-timeline-head h5 { margin: 0 !important; }.tool-call { padding: 9px 0; border-top: 1px solid #e5edf0; }.tool-call:first-of-type { border-top: 0; }.tool-call-summary { display: flex; align-items: center; gap: 8px; }.tool-call-summary .ant-typography:last-child { margin-left: auto; font-size: 11px; }.tool-call-running { animation: motion-tag-breathe 2.2s ease-in-out infinite; }.tool-call-result { max-height: 150px; overflow: auto; margin: 8px 0 0; padding: 8px 10px; border-radius: 6px; background: #eef4f5; color: #33455a; font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }.tool-call-error { display: block; margin-top: 7px; font-size: 12px; white-space: pre-wrap; }
 .guide-hero { background: linear-gradient(125deg, #102033 0%, #164154 61%, #0b777b 130%); }.guide-hero::after { content: ''; position: absolute; right: -90px; bottom: -150px; width: 430px; height: 430px; border: 1px solid rgba(119, 225, 220, .3); border-radius: 50%; box-shadow: 0 0 0 42px rgba(119, 225, 220, .05), 0 0 0 84px rgba(119, 225, 220, .035); }.guide-hero-mark { position: relative; z-index: 1; border-color: rgba(119, 225, 220, .32); border-radius: 12px; background: rgba(8, 28, 43, .26); }.guide-hero-mark .anticon { color: #77e1dc; }.guide-capability-icon { border-radius: 10px; color: #087d82; background: var(--signal-pale); }
 @media (max-width: 720px) { .content { padding: 24px 16px; }.header { padding: 0 16px; }.header-context i, .header-route { display: none; }.environment-label { display: none; }.page-head { align-items: flex-end; }.page-head .ant-btn { flex: 0 0 auto; } }
+
+/* 2026-10: Fleet signal direction. See docs/DESIGN_REFINEMENT.md for rationale and QA. */
+:root { --signal: #087f83; --muted: #596b7d; }
+body { font-family: 'Avenir Next', Avenir, 'PingFang SC', 'Microsoft YaHei', sans-serif; -webkit-font-smoothing: antialiased; }
+.app > .ant-layout { min-width: 0; }
+.sider.ant-layout-sider { min-height: 100vh; }
+.content { padding: 40px clamp(24px, 3.2vw, 56px) 56px; }
+.registry-signal { display: grid; grid-template-columns: 1.1fr 1fr; gap: 40px; align-items: center; padding: 8px 0 44px; margin-bottom: 34px; border-bottom: 1px solid #cbd7df; }
+.signal-intro .eyebrow { font-size: 10px; letter-spacing: .12em; }
+.signal-intro h1 { margin: 20px 0 18px; color: #132b40; font-family: 'Optima', 'Avenir Next', sans-serif; font-size: clamp(38px, 4vw, 62px); font-weight: 500; letter-spacing: -.055em; line-height: 1.07; }
+.signal-intro h1 span { color: #557386; }
+.signal-intro p { color: #596b7d; font-size: 14px; line-height: 1.85; margin: 0 0 18px; }
+.guide-link { display: inline-flex; align-items: center; gap: 20px; color: #086f75; font-size: 12px; font-weight: 600; padding: 5px 0; }
+.guide-link span { transition: transform 180ms ease; }.guide-link:hover span { transform: translate(3px,-3px); }
+.signal-instrument { padding: 24px 28px 0; border: 1px solid #cfdee4; border-radius: 16px; background: #e5eef1; overflow: hidden; }
+.instrument-label { display: flex; justify-content: space-between; gap: 16px; font: 10px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; color: #4c6677; }
+.signal-bars { height: 106px; display: flex; align-items: center; gap: 5px; margin-top: 16px; background: repeating-linear-gradient(0deg, transparent 0 25px,#d4e1e6 25px 26px); }
+.signal-bars i { flex: 1; height: 9%; background: #91aeb8; border-radius: 3px; transition: height 600ms var(--motion-ease); transition-delay: var(--bar-delay); }
+.signal-bars i.has-data { height: var(--bar-height); background: #29868b; }
+.signal-caption { margin: 10px 0 22px; color: #516b7b; font-size: 11px; }
+.fleet-metrics { display: grid; grid-template-columns: repeat(3,1fr); margin: 0 -28px; border-top: 1px solid #cbdce3; }
+.fleet-metrics > div { padding: 17px 20px; }.fleet-metrics > div + div { border-left: 1px solid #cbdce3; }
+.fleet-metrics dt { color: #526a7b; font-size: 10px; }.fleet-metrics dd { margin: 5px 0 0; color: #173147; font: 28px/1.1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -.06em; }
+.page-head h2 { font-size: 28px; }.page-head > .ant-space { flex-wrap: wrap; justify-content: flex-end; }
+.console-table .ant-card-body { padding: 0; }.console-table .ant-table { background: transparent; }.console-table .ant-table-container { border-radius: 0; }
+.registry-empty { padding: 35px 20px 40px; white-space: normal; }.empty-mark { display: inline-grid; width: 46px; height: 46px; place-items: center; border: 1px solid #cfdee4; border-radius: 14px; color: #087f83; font-size: 23px; background: #edf5f5; }.registry-empty h3 { margin: 16px 0 8px; color: #233e50; font-size: 18px; font-weight: 600; }.registry-empty p { color: #596b7d; margin-bottom: 20px; }
+.query-error { margin-bottom: 20px; }
+.route-motion > .ant-card:hover, .workspace-grid > .ant-card:hover, .guide-flow:hover { transform: none; box-shadow: 0 2px 4px rgba(31,51,74,.025),0 10px 28px rgba(31,51,74,.035); }
+.guide-hero::before, .guide-hero-mark .anticon, .health-dot, .status-running, .status-provisioning { animation: none; }
+.guide-hero::after { pointer-events: none; }.guide-hero .ant-card-body { z-index: 1; }
+.workspace-grid > *, .page-head > div { min-width: 0; }.ant-descriptions-item-content { overflow-wrap: anywhere; }
+a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid #087f83 !important; outline-offset: 4px; }
+.skip-link { position: fixed; top: -60px; left: 20px; z-index: 2000; padding: 12px 18px; background: white; color: #086f75; border-radius: 8px; }.skip-link:focus { top: 12px; }
+.mobile-nav { display: none; }
+@media (min-width: 1600px) { .registry-signal { gap: 100px; padding-top: 20px; padding-bottom: 56px; } }
+@media (max-width: 1150px) { .registry-signal { gap: 24px; }.signal-instrument { padding: 20px 18px 0; }.fleet-metrics { margin-inline: -18px; }.fleet-metrics > div { padding: 16px 12px; }.signal-intro h1 { font-size: 42px; } }
+@media (max-width: 900px) { .registry-signal { grid-template-columns: 1fr; }.signal-intro h1 br { display: none; }.signal-intro h1 span::before { content: ' '; }.signal-bars { height: 65px; }.signal-intro p br { display: none; }.page-head { flex-wrap: wrap; gap: 18px; } }
+@media (max-width: 720px) {
+  .header { height: auto; min-height: 60px; padding: 12px 16px; line-height: 1.5; gap: 8px; }.header-context { font-size: 9px; letter-spacing: .05em; }.health-tag { margin: 0; font-size: 10px; }.active-run-count { display: none; }
+  .mobile-nav { display: flex; padding: 0 16px; gap: 24px; background: #fff; border-bottom: 1px solid var(--line); }.mobile-nav a { display: flex; gap: 7px; align-items: center; padding: 14px 0 12px; border-bottom: 2px solid transparent; color: #596b7d; font-size: 13px; }.mobile-nav a[aria-current="page"] { color: #087f83; border-color: #087f83; }
+  .content { padding: 28px 16px 40px; }.registry-signal { gap: 24px; padding-bottom: 28px; margin-bottom: 28px; }.signal-intro h1 { font-size: 42px; max-width: 360px; }.signal-intro h1 br { display: block; }.signal-intro h1 span::before { content: none; }.signal-intro .eyebrow { font-size: 9px; }.signal-intro p { font-size: 13px; }.signal-instrument { border-radius: 12px; }.page-head > .ant-space { justify-content: flex-start; }.page-head h2 { font-size: 26px; }.page-head .ant-typography-secondary { font-size: 13px; }
+  .ant-drawer-body .ant-space { flex-wrap: wrap; }.guide-hero h1 { font-size: 32px !important; }.guide-hero p { font-size: 14px; }.guide-flow .ant-card-body { padding: 22px; }
+}
+
+/* Narrow screens prioritize reaching the registry controls within the first viewport. */
+@media (max-width: 720px) {
+  .signal-intro h1 { margin: 16px 0 12px; }
+  .signal-intro p { margin-bottom: 12px; }
+  .signal-bars { height: 40px; margin-top: 10px; }
+  .signal-caption { margin: 8px 0 14px; }
+  .fleet-metrics > div { padding-block: 12px; }
+  .registry-signal { gap: 18px; padding-bottom: 22px; margin-bottom: 22px; }
+}
+/* Ant Design Paragraph renders a div; target the component to retain contrast. */
+.guide-hero .ant-typography:not(h1) { max-width: 760px; color: #dce9ed; font-size: 16px; line-height: 1.8; }
+@media (max-width: 720px) { .guide-hero .ant-typography:not(h1) { font-size: 14px; } }

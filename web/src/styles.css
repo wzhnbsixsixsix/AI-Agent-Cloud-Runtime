@@ -66,7 +66,7 @@ html, body, #root { background: var(--canvas); color: #172337; }
 .guide-hero { background: linear-gradient(125deg, #102033 0%, #164154 61%, #0b777b 130%); }.guide-hero::after { content: ''; position: absolute; right: -90px; bottom: -150px; width: 430px; height: 430px; border: 1px solid rgba(119, 225, 220, .3); border-radius: 50%; box-shadow: 0 0 0 42px rgba(119, 225, 220, .05), 0 0 0 84px rgba(119, 225, 220, .035); }.guide-hero-mark { position: relative; z-index: 1; border-color: rgba(119, 225, 220, .32); border-radius: 12px; background: rgba(8, 28, 43, .26); }.guide-hero-mark .anticon { color: #77e1dc; }.guide-capability-icon { border-radius: 10px; color: #087d82; background: var(--signal-pale); }
 @media (max-width: 720px) { .content { padding: 24px 16px; }.header { padding: 0 16px; }.header-context i, .header-route { display: none; }.environment-label { display: none; }.page-head { align-items: flex-end; }.page-head .ant-btn { flex: 0 0 auto; } }
 
-/* 2026-10: Fleet signal direction. See docs/DESIGN_REFINEMENT.md for rationale and QA. */
+/* 2026-10: Fleet signal direction. See docs/DEVELOPMENT_LOG.md for rationale and QA. */
 :root { --signal: #087f83; --muted: #596b7d; }
 body { font-family: 'Avenir Next', Avenir, 'PingFang SC', 'Microsoft YaHei', sans-serif; -webkit-font-smoothing: antialiased; }
 .app > .ant-layout { min-width: 0; }

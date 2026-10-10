@@ -51,7 +51,7 @@ docker compose --env-file .env -f deploy/docker-compose.yml up -d --build
 - `redis:7-alpine`
 - `pgvector/pgvector:pg16`
 - `bufbuild/buf`
-- `golang:1.22-alpine`
+- `golang:1.26.9-alpine`
 - `gcr.io/distroless/static-debian12`
 
 ### 查看服务状态
@@ -754,7 +754,7 @@ docker compose --env-file .env -f deploy/docker-compose.yml up -d --build
 docker build -f build/Dockerfile --build-arg BIN=agentctl -t agentforge-agentctl .
 ```
 
-如果你想在本机直接执行 `./bin/agentctl`，可以用 Makefile 构建；本机没有 Go 时，Makefile 会自动使用 `golang:1.22-alpine` Docker 镜像：
+如果你想在本机直接执行 `./bin/agentctl`，可以用 Makefile 构建；本机没有 Go 时，Makefile 会自动使用 `golang:1.26.9-alpine` Docker 镜像：
 
 ```bash
 make proto
@@ -1100,7 +1100,9 @@ make obs-config
 git diff --check
 ```
 
-如果本机没有 Go，Makefile 会用 `golang:1.22-alpine` 容器完成等价构建。`make proto` 如果本地没有 buf，会走 `bufbuild/buf` Docker 镜像。
+如果本机没有 Go，Makefile 会用 `golang:1.26.9-alpine` 容器完成等价构建。`make proto` 如果本地没有 buf，会走 `bufbuild/buf` Docker 镜像。
+
+P0 上游兼容验证使用独立模块，不切换默认业务运行路径：`make p0-check` 运行离线检查，`make p0-models` 显式调用真实 GLM/Qwen，`make p0-sandbox` 在专用 Linux 主机验证 OpenSandbox。三个入口均要求本地 Go；环境变量、运行条件和未完成限制见 [调研报告第 9 节](./OPEN_SOURCE_RUNTIME_RESEARCH.md#9-p0-实施与验证进展2026-10-09)。不要将普通测试中跳过的 live 测试当作通过。
 
 ### 启动演示环境
 

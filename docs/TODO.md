@@ -65,11 +65,11 @@ Dashboard 已实现 Agent 创建、启动、停止、删除、模型与资源配
 
 ## 开源基础能力迁移专项（2026-10-09，后端与部署工程）
 
-选型依据、各方案采用/暂缓理由、官方来源及待验证限制见 [开源 Runtime 调研](./OPEN_SOURCE_RUNTIME_RESEARCH.md) 与 [ADR 006](./adr/006-open-source-runtime-components.md)。本次仅完成文档，以下代码与部署工作尚未执行。
+选型依据、各方案采用/暂缓理由、官方来源及待验证限制见 [开源 Runtime 调研](./OPEN_SOURCE_RUNTIME_RESEARCH.md) 与 [ADR 006](./adr/006-open-source-runtime-components.md)。P0 已开展独立验证，未切换业务默认路径；真实隔离环境未验收，不能宣称迁移已完成。
 
 - [x] 落盘沙箱、Tool use/框架、Memory 的调研比较、选型理由和版本证据；记录 gVisor/egress 不兼容、AX 恢复语义、Mem0 OSS/托管版边界等修正。
-- [ ] P0：锁定上游 tag/commit、SDK 与镜像组合；验证 Go 工具链升级以及 GLM/Qwen 模型兼容性。
-- [ ] P0：完成 OpenSandbox 最小集成验证，分别测试无网 gVisor 与联网 Kata QEMU/egress；运行时不可用时禁止静默降级。
+- [ ] P0：锁定上游 tag/commit、SDK 与镜像组合；验证 Go 工具链升级以及 GLM/Qwen 模型兼容性。进展（2026-10-09）：已记录 OpenSandbox 标签/构建提交和官方 BOM 镜像摘要，独立模块锁定 SDK 与依赖校验和；Go 1.26.9 回归通过，现有 Provider/Eino 的 GLM/Qwen 均有真实通过记录，但统一复跑遇到 GLM HTTP 429。待补 Go 镜像摘要、测试 workload 镜像冻结、镜像拉取与供应链验证，并在限流解除后重跑统一入口，未整体完成。
+- [ ] P0：完成 OpenSandbox 最小集成验证，分别测试无网 gVisor 与联网 Kata QEMU/egress；运行时不可用时禁止静默降级。进展（2026-10-09）：已实现隔离验证入口、两套配置、运行时缺失拒绝与 SDK 不自动重试单测；真实入口在 Docker 不可用时失败而非跳过。仍需专用 Linux/gVisor/Kata QEMU 环境执行启动拒绝、生命周期/文件/命令和网络探针，不能用本地单测代替。
 - [ ] P1：接入 OpenSandbox 生命周期、命令和文件 API；同时覆盖临时工具路径与 Dashboard 持久 Agent，不仅替换预热池。
 - [ ] P1：设计并验证持久 workspace 的 stop/start、跨 Run 复用、浏览、删除与显式迁移/回滚；保留原 volume 数据。
 - [ ] P1：以 Eino 接管模型—工具循环，映射现有 Hook、工具权限、调用 ID、错误与 SSE 事件，保留外部契约。

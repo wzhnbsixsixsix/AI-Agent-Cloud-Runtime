@@ -1,0 +1,26 @@
+# P0 validation only. Server API is host-loopback; never remove secure_runtime.
+# Create agentforge-p0-offline as an INTERNAL, IPv4-only Docker bridge first.
+# No networkPolicy: release-1.1.0 rejects gVisor + egress.
+[server]
+host = "127.0.0.1"
+port = 18081
+max_sandbox_timeout_seconds = 600
+
+[runtime]
+type = "docker"
+execd_image = "docker.io/opensandbox/execd@sha256:e11fdd6fa641329a1fe5298e71c8dd2afca742674fe48bc855b2ff6715512829"
+
+[secure_runtime]
+type = "gvisor"
+docker_runtime = "runsc"
+
+[docker]
+network_mode = "agentforge-p0-offline"
+no_new_privileges = true
+pids_limit = 512
+
+[proxy]
+resolve_internal = true
+
+[storage]
+allowed_host_paths = []

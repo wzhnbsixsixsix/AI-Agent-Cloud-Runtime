@@ -277,7 +277,9 @@ func (r *Runner) Run(ctx context.Context, t queue.Task) (runErr error) {
 			if ev.IsError {
 				phase = "failed"
 			}
-			r.publishToolEvent(ctx, t, callID, tc.Name, phase, timelineText(ev.Content), timelineText(toolError), ev.IsError, ev.ElapsedMS)
+			// Queue durations are signed; the public event uses uint64. Clamp
+			// malformed negative durations instead of wrapping them to huge values.
+			r.publishToolEvent(ctx, t, callID, tc.Name, phase, timelineText(ev.Content), timelineText(toolError), ev.IsError, uint64(max(ev.ElapsedMS, 0)))
 			msgs = append(msgs, llm.Message{
 				Role:       llm.RoleTool,
 				ToolCallID: callID,

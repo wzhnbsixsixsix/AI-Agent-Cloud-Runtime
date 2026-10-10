@@ -1,6 +1,6 @@
 # 开源 Agent Runtime 基础能力选型调研
 
-核验日期：2026-10-09。状态：文档与源码调研完成，尚未进行组件部署、兼容性实测或性能评测。本文件不表示相关能力已经接入 AgentForge。
+核验日期：2026-10-09。第 1–8 节为初始调研快照；后续 P0 兼容验证的实际进展、失败与限制见第 9 节。尚未完成真实隔离部署或性能评测，不表示相关能力已经接入 AgentForge 默认业务路径。
 
 ## 1. 目标、方法与证据边界
 
@@ -134,4 +134,82 @@ AgentForge 继续负责用户入口、Agent 配置、任务队列、身份与权
 
 ## 8. 文档追溯
 
-本次只新增调研与选型描述，并同步 TODO、文档索引与开发日志。实施跟踪见 [TODO](./TODO.md)，决策摘要见 [ADR 006](./adr/006-open-source-runtime-components.md)。部署验收、真实版本锁定、代码迁移均未完成，不能用于对外宣称已交付能力。
+首轮只新增调研与选型描述，并同步 TODO、文档索引与开发日志。实施跟踪见 [TODO](./TODO.md)，决策摘要见 [ADR 006](./adr/006-open-source-runtime-components.md)。后续 P0 验证见下节，不能将验证入口当作业务能力已经交付。
+
+## 9. P0 实施与验证进展（2026-10-09）
+
+### 固定组合与选择理由
+
+机器可读记录见 [versions.lock.json](../deploy/opensandbox/versions.lock.json)，依赖及校验和见 [独立验证模块](../integration/p0/go.mod) 和 [go.sum](../integration/p0/go.sum)。锁文件仍是 candidate：未核验项使用 `null` 或明确状态，禁止用臆测摘要补齐。
+
+| 项目 | 固定值 | 实际边界 |
+|---|---|---|
+| Go | 1.26.9 | 当前受支持的 1.26 补丁线；主 module、验证 module、Makefile、两个 Docker 构建阶段一致 |
+| Go 镜像 | `golang:1.26.9-alpine` | 精确标签；registry 超时，digest 与 Docker 构建未验收 |
+| OpenSandbox tag / SDK tag 提交 | `b1a29cf93a823a95913f7943010febb3f29de05c` | `release-1.1.0` 与 `sdks/sandbox/go/v1.1.0` 的 companion tag 指向同一提交 |
+| OpenSandbox 镜像构建提交 | `b00c96b0a89c07fc18409fcfe72d170b4c96c8a7` | 上游标签注释明确它是构建提交；不与标签提交混淆 |
+| Server / Execd / Egress | 官方 BOM 的三个 sha256，见锁文件 | 配置直接使用 digest；未拉取镜像、未验证发布签名 |
+| OpenSandbox Go SDK | v1.1.0 | 模块下载、校验和与编译完成 |
+| Eino / 官方模型组件 | v0.9.21 / v0.1.13 | 真实流式文本与工具调用往返验证 |
+| 官方 MCP Go SDK | v1.8.0 | 与 Eino 同模块编译及客户端构造通过；未对接真实 MCP 服务 |
+| gVisor / Kata 候选 | `release-20261005.0` / `4.2.0` | 官方标签已核验；未安装，二进制摘要和 QEMU 实际配置未验收 |
+| Workload 镜像 | 尚未冻结 | 需选择带 Python 3 与 bash 的镜像；live 入口拒绝空值或浮动标签 |
+
+来源：[Go 稳定版本](https://go.dev/dl/?mode=json)、[OpenSandbox 标签对象](https://api.github.com/repos/opensandbox-group/OpenSandbox/git/tags/836b182e208e66c046026fa0f633e089321f1efb)、[SDK companion tag](https://api.github.com/repos/opensandbox-group/OpenSandbox/git/tags/098659cfcd10e5071670fa6779e0fd72dfec30c6)、[官方 BOM](https://github.com/opensandbox-group/OpenSandbox/releases/download/release-1.1.0/1.1.0.yaml)、[gVisor](https://github.com/google/gvisor/releases/tag/release-20261005.0)、[Kata](https://github.com/kata-containers/kata-containers/releases/tag/4.2.0)。BOM 来源核验不是签名验证，两个标签对象当前报告 unsigned。
+
+曾试验 Go 1.27.2：编译/测试可运行，但 Eino 的 Sonic 依赖发出超出支持范围并回退 `encoding/json` 的警告，因此最终使用 Go 1.26.9。新增框架/SDK 仅位于 `integration/p0`，没有提前替换 Worker 的循环或沙箱 provider。Mem0 Server 的完整版本组合仍随 P1 单独验证，不因本轮 Go 验证而宣称已冻结。
+
+### 验证结果及失败记录
+
+| 检查 | 结果 |
+|---|---|
+| 协议生成、本机全部服务构建 | 通过；首次暴露原有 int64 耗时传给 uint64 事件的编译问题，非负钳制后转换修复 |
+| Go 1.26.9 全量 `go test -race -count=1 ./...` / `go vet ./...` | 通过；默认跳过的 opt-in live 测试不计为外部验证通过 |
+| Linux amd64 / arm64、CGO 关闭的全部服务交叉编译 | 通过，不等于 Linux 运行或 Docker 镜像构建通过 |
+| `make p0-check` | SDK、配置/版本一致性、运行时缺失拒绝、SDK 创建失败不自动重试等离线检查通过 |
+| 原 Provider：GLM / Qwen | 均有真实文本流、工具调用及结果回填通过记录；GLM 首次失败，单独复测通过 |
+| Eino 官方模型组件：GLM / Qwen | Go 1.26.9 下同轮真实测试均通过；早期 GLM 失败尝试未当作通过 |
+| 最后一次 `make p0-models` | 原 Provider 的 GLM HTTP 429，Qwen 通过；入口非零退出，未继续该轮 Eino 阶段。不能报告统一入口全绿 |
+| P0 Compose `config --quiet` | 占位 API key 下静态校验通过，未创建服务 |
+| 显式 live sandbox 入口 | 失败：macOS/arm64 的 Docker socket 不存在；没有 skip 或退回 runc/memory |
+| gVisor / Kata 真机网络与服务启动拒绝负例 | 未执行：用户确认没有可用 Linux 主机，当前 macOS 无可用 Docker daemon |
+
+真实模型测试只发送合成提示和 `p0_echo` 假工具，不执行模型返回的 shell，不发送项目文件。每模型每路径至多三个请求；密钥只从进程环境读取，不写入文档/锁文件/日志。失败只输出类型和 HTTP 状态，不输出响应正文。通过样本不表示限流、吞吐或长期稳定性已验收；429 不触发隐藏模型切换或无限重试。
+
+工具链验证还修复 Makefile 对带空格目录的工具目标和目录创建处理。未修改协议定义；生成代码继续按现有规则忽略。没有新增生产 CI，也没有部署或切换主项目服务。
+
+### 沙箱验证边界
+
+[gvisor.toml](../deploy/opensandbox/gvisor.toml) 使用 runsc 与独立 internal IPv4 bridge，不设置 networkPolicy；[kata.toml](../deploy/opensandbox/kata.toml) 使用 kata-qemu、bridge、dns+nft 与关闭 IPv6。internal bridge 只验证“无直接外网”，不能据此宣称已隔绝宿主机和同网段所有资源，生产租户网络隔离仍需评审。
+
+[P0 Compose](../deploy/opensandbox/compose.p0.yml) 与主 Compose 分离，仅适用于专用 Linux 主机。两个 API 绑定 host loopback，缺密钥拒绝启动，不自动重启、不改宿主 runtime。Docker socket 等价于主机管理权限，服务须作为可信控制面，不得直接公开。
+
+真实测试检查 Linux daemon/runtime、固定 Server 镜像和挂载配置；创建后、执行探针前检查实际 workload 的 `HostConfig.Runtime`、非 privileged 和 gVisor 网络。随后检查命令/文件往返、出口与删除后 404。联网检查 **enforcementMode** 为 dns+nft，不把 policy mode 或配置意图当作实际强制模式。独立真实负例要求 server 明确因缺失 runtime 拒绝启动，任意启动异常或超时都不是通过。
+
+Kata 网络探针必须允许 example.com、拒绝 example.org、未授权直连 IPv4 和 IPv6；gVisor 拒绝外部域名与直连地址。仍需记录 runsc/Kata 二进制版本、QEMU 实际配置及运行证据，不能只凭 runtime 注册名判断 hypervisor。重定向、DNS 重绑定及完整威胁模型属于后续安全验收，当前最小探针不构成安全审计。
+
+### 复跑方法与剩余动作
+
+从仓库根目录运行，三个入口均要求本地 Go，防止 Docker 回退时遗漏 opt-in 环境变量而把真实测试静默跳过：
+
+```bash
+make p0-check
+# 通过现有秘密管理方式注入 OPENAI_*、MODELSCOPE_* 和 LLM_THINKING_ENABLED
+make p0-models
+```
+
+沙箱测试须在 Docker daemon 所在的专用 Linux 主机运行，不能只把 DOCKER_HOST 指向远端（真实负例需要挂载本地临时配置）。先完成：
+
+1. 安装并核验锁文件的 runtime 候选，注册 runsc/kata-qemu，确认硬件虚拟化、QEMU 后端；不得通过改默认 runtime 绕过错误。
+2. 恢复 registry 访问，核验 BOM 签名并拉取镜像，补 Go 镜像 digest 与 workload 镜像，后者写入锁文件 workload_image。缺失项未补齐前不关闭 P0。
+3. 注入 P0_GVISOR_API_KEY / P0_KATA_API_KEY，创建专用网络并启动两套服务：
+
+```bash
+docker network create --internal --opt com.docker.network.bridge.enable_icc=false agentforge-p0-offline
+docker compose -f deploy/opensandbox/compose.p0.yml up -d
+make p0-sandbox
+```
+
+已有网络时先检查属性，不删除重建掩盖问题。程序只删除自己创建的 sandbox 和唯一命名负例容器；清理失败报告 ID，TTL 是第二道保护。结束后用同一 Compose 文件 down 停止本次两套服务，不操作主项目服务或 volume。
+
+4. 记录真实 runtime、启动拒绝、网络探针、清理结果；GLM 限流解除后重跑统一模型入口。完成后更新 TODO/开发日志再进入 P1；当前两个 P0 均保持未完成。

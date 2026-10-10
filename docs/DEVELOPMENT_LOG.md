@@ -2,7 +2,29 @@
 
 本文档记录影响用户体验、运行时语义或部署方式的实际变更，作为代码提交之外的文字追溯。项目能力边界与路线图仍以 [`PROJECT_DESIGN.md`](../PROJECT_DESIGN.md) 为准。
 
+## 2026-10-10
+
+### P0 续办：离线复核与交付
+
+- 目标：继续完成上一日 P0 工作的检查和提交，不扩大到云主机采购或生产部署。
+- 修改：保留以下 2026-10-09 主题中列明的实现、版本选择、验证结果及失败记录；本日补充交付追溯。
+- 验证：重新运行 `make p0-check`、主 module 全量 `go test -race -count=1 ./...` 和 `go vet ./...`，均通过；本轮没有再次调用真实模型。文档 25 个本地链接目标检查通过。
+- 限制：没有 Linux 验收主机、镜像摘要/拉取/签名尚未完整验证、统一模型复跑曾遇 GLM 429；两项 P0 仍未完成。没有将模拟测试、编译或默认跳过的 live 测试写作真机通过。
+
 ## 2026-10-09
+
+### P0：上游版本固定、工具链与模型验证、隔离验收入口（部分完成）
+
+- 目标：执行 TODO 的两项 P0，固定上游组合，验证 Go 升级、GLM/Qwen 兼容及 OpenSandbox 两种安全运行方式；不提前执行 P1 的业务切换。
+- 工具链：`go.mod`、`Makefile`、`build/Dockerfile` 统一 Go 1.26.9。先试验 1.27.2 后发现 Eino/Sonic 超出支持范围并回退标准 JSON，改用受维护的 1.26 最新补丁；两个版本的结果未混作最终版本验证。Makefile 增加三个 P0 入口和本地 Go 门槛，并修复含空格项目路径下的工具目标/目录创建问题；验证时误创建的空目录已移除，未删除用户文件。
+- 构建阻塞修复：`internal/agent/runner.go` 原有队列耗时 int64 与公开事件 uint64 不匹配；先钳制负数再转换，保持公开协议不变。
+- 模型验证：`internal/llm/live_test.go` 用现有路由验证真实流式文本、工具参数/call ID 和结果回填；`integration/p0/models_test.go` 用固定 Eino 官方模型组件验证相同能力，并验证官方 MCP 客户端可编译构造。仅发送合成数据，不执行模型生成命令，密钥与响应正文不入日志。
+- 沙箱与版本：`integration/p0/go.mod` / `go.sum` 固定 SDK 与依赖图；`sandbox_test.go` 包含缺失 runtime 拒绝、SDK 创建失败不重试单测，以及需要真实 Linux 的启动拒绝、创建/命令/文件/网络/删除验证入口；`versions_test.go` 检查版本与配置一致性。`deploy/opensandbox/versions.lock.json` 分开记录 tag commit、build commit、BOM digest 和未核验项；两份 TOML 与 `compose.p0.yml` 为独立候选部署，不接入主 Compose，不在 runtime 缺失时回退 runc/memory。BOM 来源已核验，签名未验证。
+- 文档：更新 `docs/OPEN_SOURCE_RUNTIME_RESEARCH.md` 第 9 节及 ADR 006，保留固定理由、失败、复跑方法和限制；同步 TODO、CLI 指南与面试说明中的 Go 版本。没有另建单次验收总结文档。
+- 已验证：Go 1.26.9 协议生成、全量 race 测试、go vet、本机所有服务构建、Linux amd64/arm64 无 CGO 交叉编译；独立模块离线检查；占位密钥下 P0 Compose 静态配置检查。默认 skip 的 live 测试不计作实测通过。
+- 真实模型结果：原 Provider 的 GLM/Qwen 分别实测通过；Eino 的 GLM/Qwen 在最终工具链下同轮通过。早期 GLM 请求有失败，最后一次统一 `make p0-models` 的 GLM HTTP 429、Qwen 通过，入口非零退出且没有继续该轮 Eino 阶段。成功样本证明基本调用契约，不证明无配额/稳定性限制，未自动重试掩盖失败。
+- 阻塞与未完成：用户确认没有 Linux 主机，当前 macOS/arm64 Docker socket 不存在；显式 sandbox live 测试实际失败而非跳过，真实 gVisor/Kata/QEMU、网络与缺失 runtime 服务启动负例均未执行。Docker Hub registry 请求多次超时，Go 镜像 digest、workload 镜像冻结、镜像拉取及签名验证未完成；锁文件保留 null/candidate。未执行容器构建或生产部署。两项 P0 均保持未完成，待取得环境/镜像及限流解除后按报告复跑。
+- 提交范围：只提交本次相关修改；保留并排除工作区已有 `docs/TODO.md` 的 Run 刷新恢复勾选与 `docs/FRONTEND_TEST_QUICKSTART.md` 改动。
 
 ### 建立仓库协作与记录约定
 

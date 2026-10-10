@@ -1,0 +1,25 @@
+# Explicit opt-in, dedicated Linux test host only. Does not extend main Compose.
+# Docker socket grants host administration; keep both APIs on loopback.
+services:
+  gvisor:
+    image: docker.io/opensandbox/server@sha256:68ca0212a2749b2c73096ce2ec0264455c64442c45f81007db442f52bf84c9d1
+    container_name: agentforge-p0-gvisor
+    network_mode: host
+    restart: "no"
+    environment:
+      SANDBOX_CONFIG_PATH: /etc/opensandbox/config.toml
+      OPENSANDBOX_SERVER_API_KEY: ${P0_GVISOR_API_KEY:?P0_GVISOR_API_KEY is required}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./gvisor.toml:/etc/opensandbox/config.toml:ro
+  kata:
+    image: docker.io/opensandbox/server@sha256:68ca0212a2749b2c73096ce2ec0264455c64442c45f81007db442f52bf84c9d1
+    container_name: agentforge-p0-kata
+    network_mode: host
+    restart: "no"
+    environment:
+      SANDBOX_CONFIG_PATH: /etc/opensandbox/config.toml
+      OPENSANDBOX_SERVER_API_KEY: ${P0_KATA_API_KEY:?P0_KATA_API_KEY is required}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./kata.toml:/etc/opensandbox/config.toml:ro

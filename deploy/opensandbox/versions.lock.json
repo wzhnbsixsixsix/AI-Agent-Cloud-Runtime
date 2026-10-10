@@ -1,0 +1,32 @@
+{
+  "verified_on": "2026-10-09",
+  "go": "1.26.9",
+  "go_image_tag": "golang:1.26.9-alpine",
+  "go_image_digest": null,
+  "opensandbox": {
+    "repository": "https://github.com/opensandbox-group/OpenSandbox",
+    "tag": "release-1.1.0",
+    "tag_commit": "b1a29cf93a823a95913f7943010febb3f29de05c",
+    "build_commit": "b00c96b0a89c07fc18409fcfe72d170b4c96c8a7",
+    "bom": "https://github.com/opensandbox-group/OpenSandbox/releases/download/release-1.1.0/1.1.0.yaml",
+    "signature_verified": false,
+    "sdk": "github.com/alibaba/OpenSandbox/sdks/sandbox/go@v1.1.0"
+  },
+  "images": {
+    "server": "docker.io/opensandbox/server@sha256:68ca0212a2749b2c73096ce2ec0264455c64442c45f81007db442f52bf84c9d1",
+    "execd": "docker.io/opensandbox/execd@sha256:e11fdd6fa641329a1fe5298e71c8dd2afca742674fe48bc855b2ff6715512829",
+    "egress": "docker.io/opensandbox/egress@sha256:56429c89b7175c2a24af62ca93a99776f03ea67a0beb74d63c8ddb34ff16fd97"
+  },
+  "validation_sdks": {
+    "eino": "github.com/cloudwego/eino@v0.9.21",
+    "eino_model": "github.com/cloudwego/eino-ext/components/model/openai@v0.1.13",
+    "mcp": "github.com/modelcontextprotocol/go-sdk@v1.8.0"
+  },
+  "runtime_candidates": {
+    "gvisor_tag": "release-20261005.0",
+    "kata_tag": "4.2.0",
+    "status": "official tags verified; binaries, checksums and host configuration not yet validated"
+  },
+  "workload_image": null,
+  "status": "candidate; image pulls, BOM signature and Linux runtime execution not yet verified"
+}

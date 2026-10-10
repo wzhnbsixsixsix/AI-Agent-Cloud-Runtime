@@ -8,7 +8,7 @@ GOFLAGS    := -trimpath
 LDFLAGS    := -s -w
 GO_CACHE_DIR ?= $(CURDIR)/.cache/go-build
 GO_MOD_CACHE ?= $(CURDIR)/.cache/go-mod
-GO_IMAGE  ?= golang:1.22-alpine
+GO_IMAGE  ?= golang:1.26.9-alpine
 
 # Buf 优先使用本地安装；未安装时回退 Docker，避免强依赖本地 protoc。
 BUF_IMAGE  := bufbuild/buf:1.45.0
@@ -16,10 +16,10 @@ DOCKER_RUN := docker run --rm -v "$(CURDIR)":/workspace -w /workspace
 BUF        := $(shell command -v buf 2>/dev/null)
 BUF_CACHE_DIR ?= $(CURDIR)/.cache/buf
 TOOLS_BIN  := $(CURDIR)/bin/tools
-PROTOC_GEN_GO_PATH := $(shell command -v protoc-gen-go 2>/dev/null)
-PROTOC_GEN_GO_GRPC_PATH := $(shell command -v protoc-gen-go-grpc 2>/dev/null)
-PROTOC_GEN_GO := $(if $(PROTOC_GEN_GO_PATH),$(PROTOC_GEN_GO_PATH),$(TOOLS_BIN)/protoc-gen-go)
-PROTOC_GEN_GO_GRPC := $(if $(PROTOC_GEN_GO_GRPC_PATH),$(PROTOC_GEN_GO_GRPC_PATH),$(TOOLS_BIN)/protoc-gen-go-grpc)
+# Keep targets relative: absolute checkout paths may contain spaces. Always use
+# the project-local generators installed at the pinned versions below.
+PROTOC_GEN_GO := bin/tools/protoc-gen-go
+PROTOC_GEN_GO_GRPC := bin/tools/protoc-gen-go-grpc
 LOCAL_GO := $(shell command -v go 2>/dev/null)
 
 ifeq ($(LOCAL_GO),)
@@ -48,11 +48,11 @@ help: ## 列出可用命令
 tools: $(PROTOC_GEN_GO) $(PROTOC_GEN_GO_GRPC) ## 安装 Go 侧代码生成工具到 bin/tools
 
 $(PROTOC_GEN_GO):
-	@mkdir -p $(TOOLS_BIN)
+	@mkdir -p "$(TOOLS_BIN)"
 	@$(GO_INSTALL) google.golang.org/protobuf/cmd/protoc-gen-go@v1.34.2
 
 $(PROTOC_GEN_GO_GRPC):
-	@mkdir -p $(TOOLS_BIN)
+	@mkdir -p "$(TOOLS_BIN)"
 	@$(GO_INSTALL) google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
 
 .PHONY: proto
@@ -84,6 +84,20 @@ build-%:
 .PHONY: test
 test: ## 跑全部单测
 	@$(GO_TEST) -race -count=1 ./...
+
+.PHONY: p0-local-go p0-check p0-models p0-sandbox
+p0-local-go:
+	@test -n "$(LOCAL_GO)" || { echo "P0 checks require local Go; no Docker/environment fallback"; exit 1; }
+
+p0-check: p0-local-go ## P0 独立模块：版本、安全策略和 SDK 契约单测（不调用真实服务）
+	@$(GO) -C integration/p0 test -race -count=1 ./...
+
+p0-models: p0-local-go ## P0 真实 GLM/Qwen 验证；需通过环境变量注入两套密钥
+	@AGENTFORGE_LIVE_MODELS=1 $(GO_TEST) -count=1 -v ./internal/llm -run '^TestLiveModels$$'
+	@AGENTFORGE_LIVE_MODELS=1 $(GO) -C integration/p0 test -count=1 -v -run '^TestLiveEinoModels$$' ./...
+
+p0-sandbox: p0-local-go ## P0 真实沙箱验证；缺少环境或运行时直接失败，不跳过
+	@AGENTFORGE_LIVE_SANDBOX=1 $(GO) -C integration/p0 test -count=1 -v -timeout=10m -run '^TestLiveSandbox$$' ./...
 
 .PHONY: cover
 cover: ## 输出覆盖率

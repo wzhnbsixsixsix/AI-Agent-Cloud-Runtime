@@ -1,8 +1,6 @@
 module github.com/wzhnbsixsixsix/agentforge
 
-go 1.22.0
-
-toolchain go1.22.12
+go 1.26.9
 
 require (
 	github.com/alicebob/miniredis/v2 v2.33.0

@@ -108,7 +108,7 @@ Docker L1 已经足够展示 tool 隔离、资源限制、预热池和 function-
 
 | 类别 | 技术 |
 |---|---|
-| 后端与协议 | Go 1.22、gRPC、Protocol Buffers、自研 ACP framed TCP、HTTP REST/SSE |
+| 后端与协议 | Go 1.26.9、gRPC、Protocol Buffers、自研 ACP framed TCP、HTTP REST/SSE |
 | Agent Runtime | Redis Streams、Redis Pub/Sub、mutable history、function calling、Supervisor、Pipeline DAG、context compaction |
 | AI 与上下文 | 智谱 GLM `glm-4.7-flash`、ModelScope `Qwen/Qwen3.5-35B-A3B`、模型路由、Skill selector、RAG、pgvector、hybrid retrieval、reranker |
 | 数据与基础设施 | Redis 7、PostgreSQL 16 + pgvector、etcd、Docker Engine API、Docker Compose、Nginx |

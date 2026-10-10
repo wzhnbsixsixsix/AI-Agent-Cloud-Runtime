@@ -29,7 +29,7 @@ func NewOpenAI(baseURL, apiKey, model string, timeout time.Duration) *OpenAIProv
 	return NewOpenAIWithOptions(baseURL, apiKey, model, timeout, 0, false)
 }
 
-// NewOpenAIWithOptions configures OpenAI-compatible providers such as Zhipu GLM.
+// NewOpenAIWithOptions configures the OpenAI-compatible transport used by ModelScope.
 func NewOpenAIWithOptions(baseURL, apiKey, model string, timeout time.Duration, maxTokens int, thinkingEnabled bool) *OpenAIProvider {
 	if timeout <= 0 {
 		timeout = 60 * time.Second

@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	DefaultAgentModel    = "glm-4.7-flash"
+	DefaultAgentModel    = ModelScopeAgentModel
 	ModelScopeAgentModel = "Qwen/Qwen3.5-35B-A3B"
 	StatusProvisioning   = "provisioning"
 	StatusRunning        = "running"
@@ -73,7 +73,7 @@ func (in CreateAgentInput) Validate(defaultImage string) error {
 		return errors.New("systemPrompt must not exceed 12000 characters")
 	}
 	if in.Model != "" && !isSupportedAgentModel(in.Model) {
-		return fmt.Errorf("unsupported model %q; supported models are %q and %q", in.Model, DefaultAgentModel, ModelScopeAgentModel)
+		return fmt.Errorf("unsupported model %q; supported model is %q", in.Model, DefaultAgentModel)
 	}
 	if in.Image != "" && in.Image != defaultImage {
 		return fmt.Errorf("image %q is not allowed", in.Image)
@@ -112,5 +112,5 @@ func normalizeCreate(in CreateAgentInput, defaultImage string) CreateAgentInput 
 }
 
 func isSupportedAgentModel(model string) bool {
-	return model == DefaultAgentModel || model == ModelScopeAgentModel
+	return model == DefaultAgentModel
 }

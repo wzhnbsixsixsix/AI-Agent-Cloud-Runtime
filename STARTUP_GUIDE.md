@@ -31,31 +31,24 @@ cd "/Users/Thomas/Desktop/AI Cloud Runtime Project/AI-Agent-Cloud-Runtime"
 test -f .env || cp .env.example .env
 ```
 
-在 `.env` 中填写智谱 API Key。`.env` 只保留在本地，不要提交：
+在 `.env` 中填写 ModelScope token。`.env` 只保留在本地，不要提交：
 
 ```dotenv
-LLM_PROVIDER=openai
-OPENAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
-OPENAI_API_KEY=你的智谱_API_KEY
-OPENAI_MODEL=glm-4.7-flash
-OPENAI_MAX_TOKENS=65536
-LLM_THINKING_ENABLED=true
-OPENAI_TIMEOUT_SECONDS=60s
-WORKER_HEARTBEAT_SECONDS=5s
-
+LLM_PROVIDER=modelscope
 MODELSCOPE_BASE_URL=https://api-inference.modelscope.cn/v1
 MODELSCOPE_ACCESS_TOKEN=你的_ModelScope_Access_Token
 MODELSCOPE_MODEL=Qwen/Qwen3.5-35B-A3B
+WORKER_HEARTBEAT_SECONDS=5s
+
 MODELSCOPE_MAX_TOKENS=0
 MODELSCOPE_TIMEOUT_SECONDS=60s
 ```
 
-两个密钥相互独立：
+模型凭据：
 
-- `OPENAI_API_KEY`：智谱开放平台 Key，用于 `glm-4.7-flash`。
 - `MODELSCOPE_ACCESS_TOKEN`：ModelScope Access Token，用于 `Qwen/Qwen3.5-35B-A3B`。
 
-Dashboard 创建 Agent 时可选择模型。没有填写 ModelScope token 时，GLM 仍可正常使用，但 Qwen Run 会返回缺少 token 的明确错误。
+Dashboard 默认且仅支持 Qwen。缺少 ModelScope token 时 Worker 启动失败；不回退其他模型。旧 GLM Agent 不自动迁移，运行会明确失败；当前没有 Agent 编辑接口，请新建 Qwen Agent。原 Agent 的历史和 workspace 保留，不自动复制或删除。
 
 ## 3. Apple Silicon 首次设置
 
@@ -178,7 +171,7 @@ docker compose --env-file .env -f deploy/docker-compose.yml down -v
 | BuildKit `metadata_v2.db` I/O error | 重启 Docker Desktop；仍失败时使用 Troubleshoot 清理 Docker 数据，注意先备份重要 volume。 |
 | Dashboard 空白 | 强制刷新并查看 `web` 日志。 |
 | 创建 Agent 失败 | 查看 `controlplane` 日志，确认 Docker socket 可用且 `alpine:3.19` 能拉取。 |
-| Run 无输出 | GLM 检查 `OPENAI_API_KEY`；Qwen 检查 `MODELSCOPE_ACCESS_TOKEN`；再查看 `worker`、`gateway` 日志。 |
+| Run 无输出 | 检查 `MODELSCOPE_ACCESS_TOKEN`；再查看 `worker`、`gateway` 日志。 |
 | API 请求失败 | 确认 `web`、`controlplane` 都在运行；Nginx 会把 `/api` 代理到 `controlplane:8086`。 |
 
 ## 8. 继续阅读

@@ -176,20 +176,18 @@ make build
 
 ## 切换到真实 LLM
 
-当 Mock 模式正常后，再接项目统一使用的智谱 OpenAI-compatible API。
+当 Mock 模式正常后，再接 ModelScope Qwen 的 OpenAI-compatible API。
 
 编辑 `.env`：
 
 ```dotenv
-LLM_PROVIDER=openai
-OPENAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
-OPENAI_API_KEY=你的智谱_API_KEY
-OPENAI_MODEL=glm-4.7-flash
-OPENAI_MAX_TOKENS=65536
-LLM_THINKING_ENABLED=true
+LLM_PROVIDER=modelscope
+MODELSCOPE_BASE_URL=https://api-inference.modelscope.cn/v1
+MODELSCOPE_ACCESS_TOKEN=你的_ModelScope_Access_Token
+MODELSCOPE_MODEL=Qwen/Qwen3.5-35B-A3B
 ```
 
-同时启用 ModelScope Qwen 时，使用另一个 token：
+可补充以下 ModelScope 参数：
 
 ```dotenv
 MODELSCOPE_BASE_URL=https://api-inference.modelscope.cn/v1
@@ -199,7 +197,7 @@ MODELSCOPE_MAX_TOKENS=0
 MODELSCOPE_TIMEOUT_SECONDS=60s
 ```
 
-Dashboard 和携带 `model=Qwen/Qwen3.5-35B-A3B` 的 Run 会路由到 ModelScope；其他模型继续使用默认智谱 Provider。
+Dashboard 默认使用 Qwen；未知或旧 GLM 模型会明确拒绝，不会自动迁移历史 Agent。
 
 重启服务：
 
@@ -575,8 +573,8 @@ RAG_ENABLED=false
 推荐配置：
 
 ```dotenv
-LLM_PROVIDER=openai
-OPENAI_API_KEY=你的智谱_API_KEY
+LLM_PROVIDER=modelscope
+MODELSCOPE_ACCESS_TOKEN=你的_ModelScope_Access_Token
 SANDBOX_DRIVER=memory
 SKILL_ENABLED=true
 RAG_ENABLED=false
@@ -593,8 +591,7 @@ RAG_ENABLED=false
 推荐配置：
 
 ```dotenv
-LLM_PROVIDER=openai
-OPENAI_API_KEY=你的智谱_API_KEY
+LLM_PROVIDER=modelscope
 MODELSCOPE_ACCESS_TOKEN=你的_ModelScope_Access_Token
 SANDBOX_DRIVER=docker
 SKILL_ENABLED=true
@@ -664,12 +661,12 @@ storage layer
 
 ## 常见问题
 
-### Q1：`OPENAI_API_KEY is required`
+### Q1：`MODELSCOPE_ACCESS_TOKEN is required`
 
 你现在是：
 
 ```dotenv
-LLM_PROVIDER=openai
+LLM_PROVIDER=modelscope
 ```
 
 但没有填 key。
@@ -683,10 +680,10 @@ LLM_PROVIDER=mock
 或者填：
 
 ```dotenv
-OPENAI_API_KEY=你的智谱_API_KEY
+MODELSCOPE_ACCESS_TOKEN=你的_ModelScope_Access_Token
 ```
 
-如果 Agent 选择 `Qwen/Qwen3.5-35B-A3B`，还需要填写 `MODELSCOPE_ACCESS_TOKEN`。
+真实模型只使用 `MODELSCOPE_ACCESS_TOKEN`；不要将其他厂商密钥填入此项。
 
 ### Q2：`agentctl` 连不上 `localhost:8080`
 
@@ -1009,16 +1006,16 @@ KEY=value
 cp .env .env.backup
 ```
 
-智谱 GLM 的 key 可以这样配：
+ModelScope Qwen 的 token 可以这样配：
 
 ```dotenv
-LLM_PROVIDER=openai
-OPENAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
-OPENAI_API_KEY=你的智谱 API Key
-OPENAI_MODEL=glm-4.7-flash
+LLM_PROVIDER=modelscope
+MODELSCOPE_BASE_URL=https://api-inference.modelscope.cn/v1
+MODELSCOPE_ACCESS_TOKEN=你的_ModelScope_Access_Token
+MODELSCOPE_MODEL=Qwen/Qwen3.5-35B-A3B
 ```
 
-`OPENAI_API_KEY` 只用于智谱；`MODELSCOPE_ACCESS_TOKEN` 只用于 ModelScope，两者不要混用。
+`MODELSCOPE_ACCESS_TOKEN` 只用于 ModelScope，GLM 配置已移除。
 
 ### 启动可观测栈
 
@@ -1066,12 +1063,12 @@ BENCH_TOTAL=500 BENCH_CONCURRENCY=32 make bench-run
 docs/W9_BENCH_REPORT.md
 ```
 
-### 真实 GLM 冒烟测试
+### 真实 Qwen 冒烟测试
 
 真实 key 不建议用于基准压测，但可以做一次链路冒烟：
 
 ```bash
-LLM_PROVIDER=openai ./bin/agentctl run --prompt "用一句话介绍 AgentForge"
+LLM_PROVIDER=modelscope ./bin/agentctl run --prompt "用一句话介绍 AgentForge"
 ```
 
 如果看到 `[DONE] run_id=... trace_id=...`，说明真实 OpenAI-compatible 链路可用。
@@ -1102,7 +1099,7 @@ git diff --check
 
 如果本机没有 Go，Makefile 会用 `golang:1.26.9-alpine` 容器完成等价构建。`make proto` 如果本地没有 buf，会走 `bufbuild/buf` Docker 镜像。
 
-P0 上游兼容验证使用独立模块，不切换默认业务运行路径：`make p0-check` 运行离线检查，`make p0-models` 显式调用真实 GLM/Qwen，`make p0-sandbox` 在专用 Linux 主机验证 OpenSandbox。三个入口均要求本地 Go；环境变量、运行条件和未完成限制见 [调研报告第 9 节](./OPEN_SOURCE_RUNTIME_RESEARCH.md#9-p0-实施与验证进展2026-10-09)。不要将普通测试中跳过的 live 测试当作通过。
+P0 上游兼容验证使用独立模块，不切换默认业务运行路径：`make p0-check` 运行离线检查，`make p0-models` 显式调用真实 Qwen，`make p0-sandbox` 在专用 Linux 主机验证 OpenSandbox。三个入口均要求本地 Go；环境变量、运行条件和未完成限制见 [调研报告第 9 节](./OPEN_SOURCE_RUNTIME_RESEARCH.md#9-p0-实施与验证进展2026-10-09)。不要将普通测试中跳过的 live 测试当作通过。
 
 ### 启动演示环境
 

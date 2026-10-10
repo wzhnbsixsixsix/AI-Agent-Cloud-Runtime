@@ -99,7 +99,7 @@ Docker L1 已经足够展示 tool 隔离、资源限制、预热池和 function-
 
 - **W1-W10：已完成**。runtime 主链路、ACP/gRPC、Docker L1 sandbox、Skill/RAG、Multi-Agent、Hook、服务发现、调度控制面和可观测性均已交付。
 - **W11：Agent Control Plane + Web Console 已完成代码实现**。新增持久 Agent Registry、Docker workspace volume、Control Plane HTTP/BFF、Redis-backed SSE 回放，以及浏览器端 Agent 创建、生命周期管理、多模型流式运行、run 历史和只读 workspace 浏览。
-- **模型配置：支持智谱 `glm-4.7-flash` 与 ModelScope `Qwen/Qwen3.5-35B-A3B`**。Worker 根据 Agent model 路由到不同 OpenAI-compatible endpoint，分别使用 `OPENAI_API_KEY` 与 `MODELSCOPE_ACCESS_TOKEN`，避免密钥混用。
+- **模型配置：使用 ModelScope `Qwen/Qwen3.5-35B-A3B`**。Worker 使用 `MODELSCOPE_ACCESS_TOKEN` 访问兼容协议端点；未配置的模型明确拒绝，不切换厂商或混用密钥。
 - **当前验收入口：** [`STARTUP_GUIDE.md`](../STARTUP_GUIDE.md) 提供 Dashboard 完整启动与功能测试；[`CLI_RUNTIME_GUIDE.md`](./CLI_RUNTIME_GUIDE.md) 独立保留 W1–W10 Runtime 能力验证。
 - **2026-07-26：前端端到端启动验证成功。** 在 Apple Silicon Docker Desktop 上完成依赖镜像拉取、8 个本地服务镜像构建、Postgres/Redis 健康检查及 Gateway、Worker、Control Plane、Web Console 启动；开发者可通过 `http://localhost:5173` 进入 Agent 管理界面进行完整前端验证。
 - **2026-08-05：Dashboard 运行可见性与 Agent 管理增强完成。** 已交付实时依赖健康状态和活跃 Run 计数、工具调用时间线、运行中刷新页面后的 SSE 回放恢复、Agent 完整资源/工具/工作区概览，以及按服务端结果处理的批量真实删除。
@@ -110,7 +110,7 @@ Docker L1 已经足够展示 tool 隔离、资源限制、预热池和 function-
 |---|---|
 | 后端与协议 | Go 1.26.9、gRPC、Protocol Buffers、自研 ACP framed TCP、HTTP REST/SSE |
 | Agent Runtime | Redis Streams、Redis Pub/Sub、mutable history、function calling、Supervisor、Pipeline DAG、context compaction |
-| AI 与上下文 | 智谱 GLM `glm-4.7-flash`、ModelScope `Qwen/Qwen3.5-35B-A3B`、模型路由、Skill selector、RAG、pgvector、hybrid retrieval、reranker |
+| AI 与上下文 | ModelScope `Qwen/Qwen3.5-35B-A3B`、模型路由、Skill selector、RAG、pgvector、hybrid retrieval、reranker |
 | 数据与基础设施 | Redis 7、PostgreSQL 16 + pgvector、etcd、Docker Engine API、Docker Compose、Nginx |
 | 安全与扩展 | Docker L1 sandbox、resource limits、read-only rootfs、WASM/WASI、wazero Hook、tool allow-list |
 | 可观测性 | OpenTelemetry、Prometheus、Grafana、OTLP Collector、structured logging |

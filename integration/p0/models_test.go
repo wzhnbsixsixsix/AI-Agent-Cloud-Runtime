@@ -13,7 +13,6 @@ import (
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
-	goopenai "github.com/meguminnnnnnnnn/go-openai"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -31,7 +30,6 @@ func TestLiveEinoModels(t *testing.T) {
 		t.Skip("live models not requested")
 	}
 	for _, vendor := range []struct{ name, base, key, model string }{
-		{"GLM", "OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL"},
 		{"Qwen", "MODELSCOPE_BASE_URL", "MODELSCOPE_ACCESS_TOKEN", "MODELSCOPE_MODEL"},
 	} {
 		t.Run(vendor.name, func(t *testing.T) {
@@ -44,9 +42,6 @@ func TestLiveEinoModels(t *testing.T) {
 			defer cancel()
 			maxTokens := 4096
 			config := &openai.ChatModelConfig{BaseURL: os.Getenv(vendor.base), APIKey: os.Getenv(vendor.key), Model: os.Getenv(vendor.model), Timeout: 90 * time.Second, MaxTokens: &maxTokens}
-			if vendor.name == "GLM" && os.Getenv("LLM_THINKING_ENABLED") == "true" {
-				config.ExtraFields = map[string]any{"thinking": map[string]string{"type": "enabled"}}
-			}
 			cm, err := openai.NewChatModel(ctx, config)
 			if err != nil {
 				t.Fatal("Eino configuration failed; details suppressed")
@@ -55,7 +50,7 @@ func TestLiveEinoModels(t *testing.T) {
 				t.Helper()
 				stream, err := cm.Stream(ctx, messages)
 				if err != nil {
-					var apiErr *goopenai.APIError
+					var apiErr *openai.APIError
 					if errors.As(err, &apiErr) {
 						t.Fatalf("Eino model request failed: HTTP %d; details suppressed", apiErr.HTTPStatusCode)
 					}

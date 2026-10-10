@@ -145,7 +145,7 @@ AgentForge 继续负责用户入口、Agent 配置、任务队列、身份与权
 | 项目 | 固定值 | 实际边界 |
 |---|---|---|
 | Go | 1.26.9 | 当前受支持的 1.26 补丁线；主 module、验证 module、Makefile、两个 Docker 构建阶段一致 |
-| Go 镜像 | `golang:1.26.9-alpine` | 精确标签；registry 超时，digest 与 Docker 构建未验收 |
+| Go 镜像 | `golang:1.26.9-alpine` + 锁文件 index digest | 2026-10-10 从固定提交的 Docker 官方 repo-info 补齐摘要；Makefile/两个构建阶段均使用 tag@digest，未拉取或构建 |
 | OpenSandbox tag / SDK tag 提交 | `b1a29cf93a823a95913f7943010febb3f29de05c` | `release-1.1.0` 与 `sdks/sandbox/go/v1.1.0` 的 companion tag 指向同一提交 |
 | OpenSandbox 镜像构建提交 | `b00c96b0a89c07fc18409fcfe72d170b4c96c8a7` | 上游标签注释明确它是构建提交；不与标签提交混淆 |
 | Server / Execd / Egress | 官方 BOM 的三个 sha256，见锁文件 | 配置直接使用 digest；未拉取镜像、未验证发布签名 |
@@ -153,13 +153,13 @@ AgentForge 继续负责用户入口、Agent 配置、任务队列、身份与权
 | Eino / 官方模型组件 | v0.9.21 / v0.1.13 | 真实流式文本与工具调用往返验证 |
 | 官方 MCP Go SDK | v1.8.0 | 与 Eino 同模块编译及客户端构造通过；未对接真实 MCP 服务 |
 | gVisor / Kata 候选 | `release-20261005.0` / `4.2.0` | 官方标签已核验；未安装，二进制摘要和 QEMU 实际配置未验收 |
-| Workload 镜像 | 尚未冻结 | 需选择带 Python 3 与 bash 的镜像；live 入口拒绝空值或浮动标签 |
+| Workload 镜像 | `python:3.12.15-slim-bookworm` + 锁文件 index digest | 2026-10-10 从官方 repo-info 冻结；采用 Python + Debian 用户空间供命令/网络探针使用，live 入口检查 bash/Python；镜像尚未实测 |
 
 来源：[Go 稳定版本](https://go.dev/dl/?mode=json)、[OpenSandbox 标签对象](https://api.github.com/repos/opensandbox-group/OpenSandbox/git/tags/836b182e208e66c046026fa0f633e089321f1efb)、[SDK companion tag](https://api.github.com/repos/opensandbox-group/OpenSandbox/git/tags/098659cfcd10e5071670fa6779e0fd72dfec30c6)、[官方 BOM](https://github.com/opensandbox-group/OpenSandbox/releases/download/release-1.1.0/1.1.0.yaml)、[gVisor](https://github.com/google/gvisor/releases/tag/release-20261005.0)、[Kata](https://github.com/kata-containers/kata-containers/releases/tag/4.2.0)。BOM 来源核验不是签名验证，两个标签对象当前报告 unsigned。
 
 曾试验 Go 1.27.2：编译/测试可运行，但 Eino 的 Sonic 依赖发出超出支持范围并回退 `encoding/json` 的警告，因此最终使用 Go 1.26.9。新增框架/SDK 仅位于 `integration/p0`，没有提前替换 Worker 的循环或沙箱 provider。Mem0 Server 的完整版本组合仍随 P1 单独验证，不因本轮 Go 验证而宣称已冻结。
 
-### 验证结果及失败记录
+### 验证结果及失败记录（2026-10-09 历史基线）
 
 | 检查 | 结果 |
 |---|---|
@@ -194,14 +194,14 @@ Kata 网络探针必须允许 example.com、拒绝 example.org、未授权直连
 
 ```bash
 make p0-check
-# 通过现有秘密管理方式注入 OPENAI_*、MODELSCOPE_* 和 LLM_THINKING_ENABLED
+# 通过现有秘密管理方式注入 MODELSCOPE_BASE_URL / MODELSCOPE_ACCESS_TOKEN / MODELSCOPE_MODEL
 make p0-models
 ```
 
 沙箱测试须在 Docker daemon 所在的专用 Linux 主机运行，不能只把 DOCKER_HOST 指向远端（真实负例需要挂载本地临时配置）。先完成：
 
 1. 安装并核验锁文件的 runtime 候选，注册 runsc/kata-qemu，确认硬件虚拟化、QEMU 后端；不得通过改默认 runtime 绕过错误。
-2. 恢复 registry 访问，核验 BOM 签名并拉取镜像，补 Go 镜像 digest 与 workload 镜像，后者写入锁文件 workload_image。缺失项未补齐前不关闭 P0。
+2. 恢复 registry 访问，核验 BOM 签名并按锁文件拉取镜像，对照官方 repo-info 的 Go/workload index 摘要检查实际 manifest 与目标平台。缺失项未补齐前不关闭 P0；不能将官方元数据当作本机镜像验证。
 3. 注入 P0_GVISOR_API_KEY / P0_KATA_API_KEY，创建专用网络并启动两套服务：
 
 ```bash
@@ -212,4 +212,16 @@ make p0-sandbox
 
 已有网络时先检查属性，不删除重建掩盖问题。程序只删除自己创建的 sandbox 和唯一命名负例容器；清理失败报告 ID，TTL 是第二道保护。结束后用同一 Compose 文件 down 停止本次两套服务，不操作主项目服务或 volume。
 
-4. 记录真实 runtime、启动拒绝、网络探针、清理结果；GLM 限流解除后重跑统一模型入口。完成后更新 TODO/开发日志再进入 P1；当前两个 P0 均保持未完成。
+4. 记录真实 runtime、启动拒绝、网络探针、清理结果；Qwen 访问恢复后重跑统一模型入口。完成后更新 TODO/开发日志再进入 P1；当前两个 P0 均保持未完成。
+
+### 2026-10-10 更新：移除 GLM，不再等待 429 恢复
+
+按用户明确要求，撤销 GLM 兼容性验收要求并删除其配置。默认 Provider、Dashboard/API 模型均改为 ModelScope Qwen；本地 `.env` 的 GLM 项已清除（不提交密钥）。统一真实模型入口只覆盖 Qwen，仍验证原 Provider 与 Eino 的流式文本、工具参数和结果回填，不用 mock 代替真实调用。
+
+保留 OpenAI-compatible 协议实现是因为 Qwen/Eino 仍使用该协议，不代表保留 GLM Provider。旧 `LLM_PROVIDER=openai` 明确报错，未配置模型不会发送到 ModelScope；已有 GLM Agent、历史和 workspace 不自动改写或删除，需新建 Qwen Agent（当前没有编辑接口）。以上历史成功和失败记录保留供追溯，不作为最新通过结论。
+
+本轮 `make p0-models` 的原 Provider Qwen 返回 HTTP 403，未进入同轮 Eino 阶段；另行执行 Eino 也返回 HTTP 403。原因尚未确认，详情不入日志；未将 403 当作 GLM 429 忽略，亦未自动换模型。
+
+Docker Hub registry 再次连接超时，但 GitHub 官方元数据可读取：已从 Docker 官方 repo-info 提交 `9dc44abcb57cd70ab4a7c5fdd4a4ea3cd1338d3d` 核验 [Go index 摘要](https://github.com/docker-library/repo-info/blob/9dc44abcb57cd70ab4a7c5fdd4a4ea3cd1338d3d/repos/golang/remote/1.26.9-alpine.md) 与 [Python workload index 摘要](https://github.com/docker-library/repo-info/blob/9dc44abcb57cd70ab4a7c5fdd4a4ea3cd1338d3d/repos/python/remote/3.12.15-slim-bookworm.md)，写入锁文件和 Go 构建引用。选择多架构 index 保留 amd64/arm64 构建能力，Python slim-bookworm 避免自行维护测试镜像；实际 bash/Python 可用性仍由 live 入口核验。来源记录可追溯不等于 manifest 下载、镜像拉取或签名已验证。
+
+Docker socket 仍不存在且无 Linux 主机：镜像拉取与供应链核验、真实 gVisor/Kata QEMU 验收仍为阻塞项。不能把已有离线测试通过等同于两项 P0 完成。

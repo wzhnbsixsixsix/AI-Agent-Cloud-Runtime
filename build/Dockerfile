@@ -7,7 +7,7 @@
 # ---------------- proto tools ----------------
 # `buf.gen.yaml` uses local Go plugins. The upstream buf image only provides
 # the buf CLI, so build the two generators explicitly before running buf.
-FROM golang:1.26.9-alpine AS proto-tools
+FROM golang:1.26.9-alpine@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS proto-tools
 RUN GOBIN=/out go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.34.2 \
     && GOBIN=/out go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
 
@@ -21,7 +21,7 @@ COPY pkg/proto ./pkg/proto
 RUN buf generate
 
 # ---------------- builder ----------------
-FROM golang:1.26.9-alpine AS builder
+FROM golang:1.26.9-alpine@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS builder
 ARG BIN=gateway
 ENV CGO_ENABLED=0 GOFLAGS=-mod=mod
 WORKDIR /src

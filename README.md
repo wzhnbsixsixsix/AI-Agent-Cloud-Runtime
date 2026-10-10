@@ -6,7 +6,7 @@ AgentForge 是一个用 Go 实现的云原生 AI Agent Runtime。它提供 Web A
 
 - **W1-W10 Runtime：已完成。**
 - **Web Dashboard + Agent Control Plane：已实现并完成本地端到端启动验证。**
-- **模型：支持智谱 `glm-4.7-flash` 和 ModelScope `Qwen/Qwen3.5-35B-A3B`，分别使用独立密钥。**
+- **模型：使用 ModelScope `Qwen/Qwen3.5-35B-A3B`；离线测试使用 Mock。**
 - **ACP Agent-to-Agent Collaboration Gateway：设计完成，尚未实现。**
 
 当前 Dashboard 支持：
@@ -28,7 +28,6 @@ flowchart LR
   GW -->|"Redis Stream"| Redis[("Redis")]
   Redis --> Worker["Worker"]
   Worker --> Router["Model Router"]
-  Router --> GLM["智谱 GLM-4.7-Flash"]
   Router --> Qwen["ModelScope Qwen3.5-35B-A3B"]
   Worker --> Services["Skill / RAG / Hook"]
   Worker --> Sandbox["Docker Sandbox"]
@@ -51,7 +50,7 @@ Browser → Web/Nginx → Control Plane → Gateway → Redis → Worker
 test -f .env || cp .env.example .env
 ```
 
-在 `.env` 中填写智谱 API Key，然后启动：
+在 `.env` 中填写 ModelScope Access Token，然后启动：
 
 ```bash
 docker compose --env-file .env -f deploy/docker-compose.yml up -d --build
@@ -83,7 +82,7 @@ DOCKER_DEFAULT_PLATFORM=linux/arm64 docker compose \
 | 接入协议 | gRPC `RunAgent`、ACP v1 framed TCP、HTTP REST/SSE |
 | 执行与状态 | Redis Streams、Redis Pub/Sub、mutable history、event replay |
 | Agent 管理 | Agent Registry、持久容器、named workspace volume、生命周期管理 |
-| 模型 | 智谱 GLM、ModelScope Qwen、按 Agent 模型路由、Mock provider |
+| 模型 | ModelScope Qwen、按 Agent 模型路由、Mock provider |
 | 工具隔离 | Docker L1 sandbox、资源限制、只读 rootfs、tool allow-list |
 | 上下文 | Skill selector、pgvector RAG、history fold、context compaction |
 | 编排 | Supervisor subagent、Pipeline DAG |

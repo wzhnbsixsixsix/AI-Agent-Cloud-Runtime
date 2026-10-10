@@ -93,12 +93,6 @@ func main() {
 
 	provider, err := llm.NewFromConfig(llm.FactoryConfig{
 		Provider:              cfg.LLMProvider,
-		OpenAIBaseURL:         cfg.OpenAIBaseURL,
-		OpenAIAPIKey:          cfg.OpenAIAPIKey,
-		OpenAIModel:           cfg.OpenAIModel,
-		OpenAIMaxTokens:       cfg.OpenAIMaxTokens,
-		ThinkingEnabled:       cfg.LLMThinkingEnabled,
-		OpenAITimeout:         cfg.OpenAITimeout,
 		ModelScopeBaseURL:     cfg.ModelScopeBaseURL,
 		ModelScopeAccessToken: cfg.ModelScopeAccessToken,
 		ModelScopeModel:       cfg.ModelScopeModel,

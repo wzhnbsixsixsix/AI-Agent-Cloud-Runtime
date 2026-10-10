@@ -5,6 +5,6 @@ export interface AgentRun { runId: string; agentId: string; traceId: string; pro
 export interface BatchDeleteAgentsResult { deletedIds: string[]; failed: AgentDeleteFailure[] }
 export interface AgentDeleteFailure { agentId?: string; message: string }
 export interface WorkspaceEntry { path: string; name: string; directory: boolean; size: number }
-export interface CreateAgentInput { name: string; role: string; systemPrompt: string; model?: 'glm-4.7-flash' | 'Qwen/Qwen3.5-35B-A3B'; image?: string; cpuQuotaUs?: number; memoryMb?: number; pidsLimit?: number; tools?: string[]; workspacePolicy?: 'retain' | 'delete' }
+export interface CreateAgentInput { name: string; role: string; systemPrompt: string; model?: 'Qwen/Qwen3.5-35B-A3B'; image?: string; cpuQuotaUs?: number; memoryMb?: number; pidsLimit?: number; tools?: string[]; workspacePolicy?: 'retain' | 'delete' }
 // The dashboard needs this status response before opening any Agent page.
 export interface ControlPlaneStatus { status: 'ok' | 'degraded'; activeRuns: number; checks: Record<string, 'ok' | 'failed'> }

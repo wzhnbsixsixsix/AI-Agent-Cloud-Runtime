@@ -16,16 +16,13 @@ func TestLiveModels(t *testing.T) {
 	if os.Getenv("AGENTFORGE_LIVE_MODELS") != "1" {
 		t.Skip("live models not requested")
 	}
-	for _, key := range []string{"OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL", "MODELSCOPE_ACCESS_TOKEN", "MODELSCOPE_BASE_URL", "MODELSCOPE_MODEL"} {
+	for _, key := range []string{"MODELSCOPE_ACCESS_TOKEN", "MODELSCOPE_BASE_URL", "MODELSCOPE_MODEL"} {
 		if os.Getenv(key) == "" {
 			t.Fatalf("required environment variable missing: %s", key)
 		}
 	}
 	p, err := NewFromConfig(FactoryConfig{
-		Provider: "openai", OpenAIBaseURL: os.Getenv("OPENAI_BASE_URL"),
-		OpenAIAPIKey: os.Getenv("OPENAI_API_KEY"), OpenAIModel: os.Getenv("OPENAI_MODEL"),
-		OpenAITimeout: 90 * time.Second, OpenAIMaxTokens: 4096,
-		ThinkingEnabled:       os.Getenv("LLM_THINKING_ENABLED") == "true",
+		Provider:              "modelscope",
 		ModelScopeBaseURL:     os.Getenv("MODELSCOPE_BASE_URL"),
 		ModelScopeAccessToken: os.Getenv("MODELSCOPE_ACCESS_TOKEN"),
 		ModelScopeModel:       os.Getenv("MODELSCOPE_MODEL"), ModelScopeTimeout: 90 * time.Second,
@@ -34,7 +31,7 @@ func TestLiveModels(t *testing.T) {
 	if err != nil {
 		t.Fatal("provider configuration failed (details suppressed)")
 	}
-	for _, model := range []string{os.Getenv("OPENAI_MODEL"), os.Getenv("MODELSCOPE_MODEL")} {
+	for _, model := range []string{os.Getenv("MODELSCOPE_MODEL")} {
 		t.Run(model, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 			defer cancel()

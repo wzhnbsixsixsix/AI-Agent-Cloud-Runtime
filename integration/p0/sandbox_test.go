@@ -257,7 +257,7 @@ func TestLiveSandbox(t *testing.T) {
 				}
 				return result.Text()
 			}
-			if !strings.Contains(run("printf P0_EXEC_OK"), "P0_EXEC_OK") {
+			if !strings.Contains(run("command -v bash && python3 --version && printf P0_EXEC_OK"), "P0_EXEC_OK") {
 				t.Fatal("command stdout mismatch")
 			}
 			if err := sb.UploadFile(ctx, strings.NewReader("P0_FILE_OK"), osb.UploadFileOptions{FileName: "agentforge-p0.txt", Metadata: osb.FileMetadata{Path: "/tmp/agentforge-p0.txt", Mode: 600}}); err != nil {

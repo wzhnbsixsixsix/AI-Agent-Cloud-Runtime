@@ -4,6 +4,18 @@
 
 ## 2026-10-10
 
+### P0 续办：退役 GLM、冻结 Go/workload 摘要
+
+- 目标与选择：按用户要求删除 GLM 模型配置、撤销 GLM/429 验收要求，继续两项 P0；保留 Qwen 使用的 OpenAI-compatible 协议，不把协议实现误当作 GLM 配置删除。没有授权或执行云主机采购、运行时安装与生产部署。
+- 配置与路由：`.env.example`、`internal/config`、`cmd/worker/main.go`、`internal/llm/factory.go`、`deploy/docker-compose.yml` 删除 GLM 环境映射，默认 ModelScope；旧 Provider、未配置模型明确拒绝，空模型使用配置的 Qwen，不向新端点转发旧模型。本地忽略的 `.env` 同步清除 GLM 项并保留 ModelScope token；密钥不入提交。`internal/llm/openai.go` 仅同步协议用途注释。
+- 默认模型与契约：`internal/controlplane/types.go`、`api/controlplane.openapi.yaml`、`web/src/api.generated.ts`、`web/src/models.ts`、`web/src/main.tsx` 改为 Qwen 默认/唯一选项；补充配置、路由、旧模型拒绝与前端选项单测。未修改既有 Agent/历史/workspace 数据，当前无编辑接口，旧 GLM Agent 需新建 Qwen Agent 后使用，数据迁移不在本次范围。
+- 真实模型入口：`internal/llm/live_test.go`、`integration/p0/models_test.go` 与 Makefile 只测试 Qwen；Eino 错误匹配改用组件实际导出的 `openai.APIError`，安全输出 HTTP 状态、不输出正文。`integration/p0/go.mod` 整理原下游 APIError 依赖为 indirect，版本和 go.sum 不变。
+- 镜像证据：`deploy/opensandbox/versions.lock.json` 固定 Docker 官方 repo-info 提交 `9dc44abcb57cd70ab4a7c5fdd4a4ea3cd1338d3d`，读取并复核 Go 1.26.9-alpine 和 Python 3.12.15-slim-bookworm 的多架构 index 摘要。Makefile、`build/Dockerfile` 两个 Go 阶段改为 tag@digest；workload 使用官方 Python Debian slim 镜像，避免自建测试镜像。`integration/p0/versions_test.go` 校验摘要格式/构建引用；`sandbox_test.go` 增加实际 bash/Python 检查。此处是官方元数据核验，不是拉取或签名验收。
+- 文档追溯：同步 README、PROJECT_DESIGN、STARTUP_GUIDE、架构/网络图、CLI/前端快速指南、面试/演示/基准说明；`OPEN_SOURCE_RUNTIME_RESEARCH.md` 保留历史记录并新增当前状态和摘要来源，`TODO.md` 单独完成 GLM 移除，两项整体 P0 继续未勾选。
+- 已验证：Go 1.26.9 主模块全量 race 测试、主/独立模块 go vet、`make p0-check`、前端 3 项测试和生产构建、主/P0 Compose 静态配置校验通过。前端首次构建因 node_modules/@types 中 8 个空的重复目录失败，确认均为空后移至 `/private/tmp/agentforge-empty-types-DUjf5Z` 保留，复测通过；未修改包版本。构建仍提示已有大 chunk 警告。
+- 未通过/未执行：本轮原 Provider 与 Eino Qwen 实测均 HTTP 403，原因尚未确认，不能沿用历史成功标为本轮通过。真实 sandbox 入口在 Docker info 失败时非零退出，不跳过/降级；用户没有 Linux 主机，真实 gVisor/Kata QEMU 生命周期、网络、启动拒绝尚未执行。Docker Hub registry 仍连接超时，官方元数据摘要不替代镜像拉取、manifest 校验、BOM 签名及供应链验收。两个 P0 不能整体关闭。
+- 工作区保护：原有 TODO 的 Run 刷新恢复勾选与前端快速指南的重建说明保留且排除本次提交；不删除或修整原有空白。
+
 ### P0 续办：离线复核与交付
 
 - 目标：继续完成上一日 P0 工作的检查和提交，不扩大到云主机采购或生产部署。

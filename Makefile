@@ -8,7 +8,7 @@ GOFLAGS    := -trimpath
 LDFLAGS    := -s -w
 GO_CACHE_DIR ?= $(CURDIR)/.cache/go-build
 GO_MOD_CACHE ?= $(CURDIR)/.cache/go-mod
-GO_IMAGE  ?= golang:1.26.9-alpine
+GO_IMAGE  ?= golang:1.26.9-alpine@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0
 
 # Buf 优先使用本地安装；未安装时回退 Docker，避免强依赖本地 protoc。
 BUF_IMAGE  := bufbuild/buf:1.45.0
@@ -92,7 +92,7 @@ p0-local-go:
 p0-check: p0-local-go ## P0 独立模块：版本、安全策略和 SDK 契约单测（不调用真实服务）
 	@$(GO) -C integration/p0 test -race -count=1 ./...
 
-p0-models: p0-local-go ## P0 真实 GLM/Qwen 验证；需通过环境变量注入两套密钥
+p0-models: p0-local-go ## P0 真实 Qwen 验证；需通过环境变量注入 ModelScope token
 	@AGENTFORGE_LIVE_MODELS=1 $(GO_TEST) -count=1 -v ./internal/llm -run '^TestLiveModels$$'
 	@AGENTFORGE_LIVE_MODELS=1 $(GO) -C integration/p0 test -count=1 -v -run '^TestLiveEinoModels$$' ./...
 

@@ -1,8 +1,15 @@
 {
-  "verified_on": "2026-10-09",
+  "verified_on": "2026-10-10",
   "go": "1.26.9",
   "go_image_tag": "golang:1.26.9-alpine",
-  "go_image_digest": null,
+  "go_image_digest": "sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0",
+  "docker_official_images_evidence": {
+    "repository": "https://github.com/docker-library/repo-info",
+    "commit": "9dc44abcb57cd70ab4a7c5fdd4a4ea3cd1338d3d",
+    "go_path": "repos/golang/remote/1.26.9-alpine.md",
+    "workload_path": "repos/python/remote/3.12.15-slim-bookworm.md",
+    "status": "index digests read from pinned official metadata; registry manifests, pulls and attestations not verified"
+  },
   "opensandbox": {
     "repository": "https://github.com/opensandbox-group/OpenSandbox",
     "tag": "release-1.1.0",
@@ -27,6 +34,6 @@
     "kata_tag": "4.2.0",
     "status": "official tags verified; binaries, checksums and host configuration not yet validated"
   },
-  "workload_image": null,
+  "workload_image": "docker.io/library/python:3.12.15-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258",
   "status": "candidate; image pulls, BOM signature and Linux runtime execution not yet verified"
 }

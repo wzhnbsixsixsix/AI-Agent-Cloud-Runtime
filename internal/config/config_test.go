@@ -2,11 +2,18 @@ package config
 
 import "testing"
 
-func TestLoadWorkerRequiresOpenAICompatibleKey(t *testing.T) {
-	t.Setenv("LLM_PROVIDER", "openai")
-	t.Setenv("OPENAI_API_KEY", "")
+func TestLoadWorkerRequiresModelScopeToken(t *testing.T) {
+	t.Setenv("LLM_PROVIDER", "modelscope")
+	t.Setenv("MODELSCOPE_ACCESS_TOKEN", "")
 	if _, err := LoadWorker(); err == nil {
 		t.Fatal("expected missing key error")
+	}
+}
+
+func TestLoadWorkerRejectsRetiredProvider(t *testing.T) {
+	t.Setenv("LLM_PROVIDER", "openai")
+	if _, err := LoadWorker(); err == nil {
+		t.Fatal("retired provider accepted")
 	}
 }
 

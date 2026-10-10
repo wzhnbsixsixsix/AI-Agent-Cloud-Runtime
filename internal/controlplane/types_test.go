@@ -17,10 +17,16 @@ func TestCreateAgentInputValidate(t *testing.T) {
 	if err := (CreateAgentInput{Name: "researcher", Role: "Research", Image: "unknown:latest"}).Validate("alpine:3.19"); err == nil {
 		t.Fatal("expected image rejection")
 	}
-	for _, model := range []string{DefaultAgentModel, ModelScopeAgentModel} {
+	if DefaultAgentModel != "Qwen/Qwen3.5-35B-A3B" {
+		t.Fatal("default model drift")
+	}
+	for _, model := range []string{DefaultAgentModel} {
 		if err := (CreateAgentInput{Name: "researcher", Role: "Research", Model: model}).Validate("alpine:3.19"); err != nil {
 			t.Fatalf("supported model %q rejected: %v", model, err)
 		}
+	}
+	if err := (CreateAgentInput{Name: "researcher", Role: "Research", Model: "glm-4.7-flash"}).Validate("alpine:3.19"); err == nil {
+		t.Fatal("retired model accepted")
 	}
 	if err := (CreateAgentInput{Name: "researcher", Role: "Research", Model: "unknown/model"}).Validate("alpine:3.19"); err == nil {
 		t.Fatal("expected unsupported model rejection")

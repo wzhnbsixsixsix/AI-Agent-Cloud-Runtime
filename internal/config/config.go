@@ -88,13 +88,7 @@ type Worker struct {
 	MaxRetry          int           `env:"WORKER_MAX_RETRY"         envDefault:"3"`
 	SchedulerDial     string        `env:"SCHEDULER_DIAL_ADDR"      envDefault:"scheduler:8081"`
 
-	LLMProvider           string        `env:"LLM_PROVIDER"            envDefault:"openai"`
-	OpenAIBaseURL         string        `env:"OPENAI_BASE_URL"         envDefault:"https://open.bigmodel.cn/api/paas/v4"`
-	OpenAIAPIKey          string        `env:"OPENAI_API_KEY"`
-	OpenAIModel           string        `env:"OPENAI_MODEL"            envDefault:"glm-4.7-flash"`
-	OpenAIMaxTokens       int           `env:"OPENAI_MAX_TOKENS"       envDefault:"65536"`
-	LLMThinkingEnabled    bool          `env:"LLM_THINKING_ENABLED"    envDefault:"true"`
-	OpenAITimeout         time.Duration `env:"OPENAI_TIMEOUT_SECONDS"  envDefault:"60s"`
+	LLMProvider           string        `env:"LLM_PROVIDER"            envDefault:"modelscope"`
 	ModelScopeBaseURL     string        `env:"MODELSCOPE_BASE_URL"         envDefault:"https://api-inference.modelscope.cn/v1"`
 	ModelScopeAccessToken string        `env:"MODELSCOPE_ACCESS_TOKEN"`
 	ModelScopeModel       string        `env:"MODELSCOPE_MODEL"            envDefault:"Qwen/Qwen3.5-35B-A3B"`
@@ -182,14 +176,14 @@ func LoadScheduler() (*Scheduler, error) {
 	return c, nil
 }
 
-// LoadWorker 读取 Worker 配置；启用 openai 时校验 API Key。
+// LoadWorker 读取 Worker 配置；启用 ModelScope 时校验 token。
 func LoadWorker() (*Worker, error) {
 	c := &Worker{}
 	if err := env.Parse(c); err != nil {
 		return nil, fmt.Errorf("parse worker env: %w", err)
 	}
-	if c.LLMProvider == "openai" && c.OpenAIAPIKey == "" {
-		return nil, fmt.Errorf("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
+	if c.LLMProvider != "modelscope" && c.LLMProvider != "mock" {
+		return nil, fmt.Errorf("LLM_PROVIDER must be modelscope or mock")
 	}
 	if c.LLMProvider == "modelscope" && c.ModelScopeAccessToken == "" {
 		return nil, fmt.Errorf("MODELSCOPE_ACCESS_TOKEN is required when LLM_PROVIDER=modelscope")

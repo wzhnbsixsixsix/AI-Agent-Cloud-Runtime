@@ -20,11 +20,13 @@ func TestPinnedProfiles(t *testing.T) {
 		return b
 	}
 	var lock struct {
-		Go          string
-		GoImageTag  string `json:"go_image_tag"`
-		Images      map[string]string
-		OpenSandbox struct{ SDK string }
-		SDKs        map[string]string `json:"validation_sdks"`
+		Go            string
+		GoImageTag    string `json:"go_image_tag"`
+		GoImageDigest string `json:"go_image_digest"`
+		WorkloadImage string `json:"workload_image"`
+		Images        map[string]string
+		OpenSandbox   struct{ SDK string }
+		SDKs          map[string]string `json:"validation_sdks"`
 	}
 	if err := json.Unmarshal(read("deploy/opensandbox/versions.lock.json"), &lock); err != nil {
 		t.Fatal(err)
@@ -32,8 +34,12 @@ func TestPinnedProfiles(t *testing.T) {
 	if !strings.Contains(string(read("go.mod")), "go "+lock.Go+"\n") || !strings.Contains(string(read("integration/p0/go.mod")), "go "+lock.Go+"\n") {
 		t.Fatal("Go version drift")
 	}
+	if !regexp.MustCompile(`^sha256:[a-f0-9]{64}$`).MatchString(lock.GoImageDigest) ||
+		!regexp.MustCompile(`^docker.io/library/python:[a-zA-Z0-9._-]+@sha256:[a-f0-9]{64}$`).MatchString(lock.WorkloadImage) {
+		t.Fatal("Go or workload digest missing or malformed")
+	}
 	for _, path := range []string{"Makefile", "build/Dockerfile"} {
-		if !strings.Contains(string(read(path)), lock.GoImageTag) {
+		if !strings.Contains(string(read(path)), lock.GoImageTag+"@"+lock.GoImageDigest) {
 			t.Fatalf("Go image drift: %s", path)
 		}
 	}

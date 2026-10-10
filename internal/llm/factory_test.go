@@ -10,14 +10,7 @@ import (
 	"time"
 )
 
-func TestFactoryRoutesModelScopeWithSeparateToken(t *testing.T) {
-	var glmCalled bool
-	glmServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		glmCalled = true
-		http.Error(w, "unexpected GLM request", http.StatusInternalServerError)
-	}))
-	defer glmServer.Close()
-
+func TestFactoryRoutesModelScope(t *testing.T) {
 	var gotAuth, gotModel string
 	modelScopeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
@@ -33,11 +26,7 @@ func TestFactoryRoutesModelScopeWithSeparateToken(t *testing.T) {
 	defer modelScopeServer.Close()
 
 	provider, err := NewFromConfig(FactoryConfig{
-		Provider:              "openai",
-		OpenAIBaseURL:         glmServer.URL,
-		OpenAIAPIKey:          "glm-token",
-		OpenAIModel:           "glm-4.7-flash",
-		OpenAITimeout:         time.Second,
+		Provider:              "modelscope",
 		ModelScopeBaseURL:     modelScopeServer.URL,
 		ModelScopeAccessToken: "modelscope-token",
 		ModelScopeModel:       "Qwen/Qwen3.5-35B-A3B",
@@ -46,39 +35,50 @@ func TestFactoryRoutesModelScopeWithSeparateToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new provider: %v", err)
 	}
-	ch, err := provider.Stream(context.Background(), Req{
-		Model:    "Qwen/Qwen3.5-35B-A3B",
-		Messages: []Message{{Role: RoleUser, Content: "hello"}},
-	})
-	if err != nil {
-		t.Fatalf("stream: %v", err)
-	}
-	for range ch {
-	}
-
-	if glmCalled {
-		t.Fatal("Qwen request was sent to the GLM endpoint")
-	}
-	if gotAuth != "Bearer modelscope-token" {
-		t.Fatalf("unexpected ModelScope authorization header %q", gotAuth)
-	}
-	if gotModel != "Qwen/Qwen3.5-35B-A3B" {
-		t.Fatalf("unexpected ModelScope model %q", gotModel)
+	for _, requestedModel := range []string{"", "Qwen/Qwen3.5-35B-A3B"} {
+		ch, err := provider.Stream(context.Background(), Req{
+			Model:    requestedModel,
+			Messages: []Message{{Role: RoleUser, Content: "hello"}},
+		})
+		if err != nil {
+			t.Fatalf("stream: %v", err)
+		}
+		for range ch {
+		}
+		if gotAuth != "Bearer modelscope-token" {
+			t.Fatal("unexpected ModelScope authorization")
+		}
+		if gotModel != "Qwen/Qwen3.5-35B-A3B" {
+			t.Fatalf("unexpected ModelScope model %q", gotModel)
+		}
 	}
 }
 
-func TestFactoryRejectsModelScopeRunWithoutToken(t *testing.T) {
-	provider, err := NewFromConfig(FactoryConfig{
-		Provider:        "openai",
-		OpenAIBaseURL:   "https://example.invalid/v1",
-		OpenAIAPIKey:    "glm-token",
-		OpenAIModel:     "glm-4.7-flash",
+func TestFactoryRejectsModelScopeWithoutToken(t *testing.T) {
+	_, err := NewFromConfig(FactoryConfig{
+		Provider:        "modelscope",
 		ModelScopeModel: "Qwen/Qwen3.5-35B-A3B",
 	})
-	if err != nil {
-		t.Fatalf("new provider: %v", err)
+	if err == nil {
+		t.Fatal("expected missing token error")
 	}
-	if _, err := provider.Stream(context.Background(), Req{Model: "Qwen/Qwen3.5-35B-A3B"}); err == nil {
-		t.Fatal("expected missing ModelScope token error")
+}
+
+func TestFactoryRejectsRetiredProviderAndModels(t *testing.T) {
+	if _, err := NewFromConfig(FactoryConfig{Provider: "openai"}); err == nil {
+		t.Fatal("retired provider accepted")
+	}
+	provider, err := NewFromConfig(FactoryConfig{
+		ModelScopeBaseURL:     "https://example.invalid/v1",
+		ModelScopeAccessToken: "test-token",
+		ModelScopeModel:       "Qwen/Qwen3.5-35B-A3B",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range []string{"glm-4.7-flash", "unknown/model", "Qwen/not-configured"} {
+		if _, err := provider.Stream(context.Background(), Req{Model: model}); err == nil {
+			t.Fatalf("unconfigured model %q accepted", model)
+		}
 	}
 }

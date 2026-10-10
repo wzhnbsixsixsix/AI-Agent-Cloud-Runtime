@@ -50,7 +50,7 @@ flowchart LR
   CP -->|"gRPC RunAgent"| GW["gateway<br/>:8080"]
   GW -->|"XADD"| Redis[("redis<br/>:6379")]
   Redis -->|"XREADGROUP"| Worker["worker"]
-  Worker -->|"HTTPS + model routing"| LLM["智谱 GLM / ModelScope Qwen"]
+  Worker -->|"HTTPS + model routing"| LLM["ModelScope Qwen"]
   Worker -->|"PUBLISH events"| Redis
   Redis --> GW
   GW -->|"gRPC stream"| CP

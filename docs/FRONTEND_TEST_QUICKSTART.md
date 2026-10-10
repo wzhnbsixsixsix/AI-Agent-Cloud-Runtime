@@ -4,7 +4,7 @@
 
 - Docker Desktop 已启动。
 - Docker Compose v2 已安装。
-- 已准备智谱 API Key。
+- 已准备 ModelScope Access Token。
 
 ## 2. 首次准备
 
@@ -16,18 +16,12 @@ test -f .env || cp .env.example .env
 在 `.env` 中确认：
 
 ```dotenv
-LLM_PROVIDER=openai
-OPENAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
-OPENAI_API_KEY=你的智谱_API_KEY
-OPENAI_MODEL=glm-4.7-flash
-OPENAI_MAX_TOKENS=65536
-LLM_THINKING_ENABLED=true
-OPENAI_TIMEOUT_SECONDS=60s
-WORKER_HEARTBEAT_SECONDS=5s
-
+LLM_PROVIDER=modelscope
 MODELSCOPE_BASE_URL=https://api-inference.modelscope.cn/v1
 MODELSCOPE_ACCESS_TOKEN=你的_ModelScope_Access_Token
 MODELSCOPE_MODEL=Qwen/Qwen3.5-35B-A3B
+WORKER_HEARTBEAT_SECONDS=5s
+
 MODELSCOPE_MAX_TOKENS=0
 MODELSCOPE_TIMEOUT_SECONDS=60s
 ```
